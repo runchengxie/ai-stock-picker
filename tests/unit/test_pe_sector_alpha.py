@@ -111,7 +111,7 @@ def test_simulate_dollar_neutral_portfolio_offsets_long_and_short():
 
     assert diagnostics.iloc[0]["tradable_longs"] == 1
     assert diagnostics.iloc[0]["tradable_shorts"] == 1
-    assert round(values.iloc[-1], 4) == 110.101
+    assert round(values.iloc[-1], 4) == 110.7823
 
 
 def test_compute_metrics_returns_expected_totals():

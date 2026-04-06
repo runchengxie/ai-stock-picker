@@ -592,10 +592,14 @@ def _simulate_dollar_neutral_portfolio(
 
         long_prices = prices.loc[active_dates, long_tickers]
         short_prices = prices.loc[active_dates, short_tickers]
-        tradable_longs = long_prices.columns[long_prices.iloc[0].notna()]
-        tradable_shorts = short_prices.columns[short_prices.iloc[0].notna()]
-        long_prices = long_prices.loc[:, tradable_longs].ffill()
-        short_prices = short_prices.loc[:, tradable_shorts].ffill()
+        tradable_longs = long_prices.columns[long_prices.iloc[0].gt(0)]
+        tradable_shorts = short_prices.columns[short_prices.iloc[0].gt(0)]
+        long_prices = (
+            long_prices.loc[:, tradable_longs].ffill().where(lambda df: df > 0)
+        )
+        short_prices = (
+            short_prices.loc[:, tradable_shorts].ffill().where(lambda df: df > 0)
+        )
 
         diagnostics.append(
             {
@@ -612,17 +616,25 @@ def _simulate_dollar_neutral_portfolio(
             continue
 
         if long_prices.empty:
-            long_leg_returns = pd.Series(0.0, index=active_dates)
+            long_leg_log_returns = pd.Series(0.0, index=active_dates)
         else:
-            long_leg_returns = long_prices.pct_change().fillna(0.0).mean(axis=1)
+            long_leg_log_returns = np.log(long_prices / long_prices.shift(1))
+            long_leg_log_returns = long_leg_log_returns.replace(
+                [np.inf, -np.inf], np.nan
+            ).fillna(0.0)
+            long_leg_log_returns = long_leg_log_returns.mean(axis=1)
 
         if short_prices.empty:
-            short_leg_returns = pd.Series(0.0, index=active_dates)
+            short_leg_log_returns = pd.Series(0.0, index=active_dates)
         else:
-            short_leg_returns = short_prices.pct_change().fillna(0.0).mean(axis=1)
+            short_leg_log_returns = np.log(short_prices / short_prices.shift(1))
+            short_leg_log_returns = short_leg_log_returns.replace(
+                [np.inf, -np.inf], np.nan
+            ).fillna(0.0)
+            short_leg_log_returns = short_leg_log_returns.mean(axis=1)
 
-        portfolio_returns = 0.5 * long_leg_returns - 0.5 * short_leg_returns
-        period_path = capital * (1.0 + portfolio_returns).cumprod()
+        portfolio_log_returns = 0.5 * long_leg_log_returns - 0.5 * short_leg_log_returns
+        period_path = capital * np.exp(portfolio_log_returns.cumsum())
         valuation_parts.append(period_path)
         capital = float(period_path.iloc[-1])
 
