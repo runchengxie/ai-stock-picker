@@ -53,6 +53,7 @@ def create_parser() -> argparse.ArgumentParser:
   stockq preliminary               运行量化初筛选股
   stockq backtest ai               运行AI选股回测
   stockq backtest quant            运行量化初选回测
+  stockq backtest pe               运行PE估值因子回测
   stockq backtest spy              运行SPY基准回测
   stockq load-data                 加载数据到数据库
   stockq ai-pick                   运行AI选股分析
@@ -81,8 +82,8 @@ def create_parser() -> argparse.ArgumentParser:
     )
     backtest_parser.add_argument(
         "strategy",
-        choices=["ai", "quant", "spy"],
-        help="回测策略类型：ai(AI选股), quant(量化初选), spy(SPY基准)",
+        choices=["ai", "quant", "pe", "spy"],
+        help="回测策略类型：ai(AI选股), quant(量化初选), pe(PE估值因子), spy(SPY基准)",
     )
     backtest_parser.add_argument("--config", type=str, help="配置文件路径（可选）")
     backtest_parser.add_argument(

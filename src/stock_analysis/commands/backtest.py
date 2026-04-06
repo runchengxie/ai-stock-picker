@@ -33,7 +33,7 @@ def run_backtest(
     """Run backtest analysis
 
     Args:
-        strategy: Strategy type ('ai', 'quant', 'spy')
+        strategy: Strategy type ('ai', 'quant', 'spy', 'pe')
         config_path: Configuration file path (optional)
 
     Returns:
@@ -56,6 +56,10 @@ def run_backtest(
             from ..backtest.strategies.benchmark_spy import main as spy_main
 
             spy_main(target_percent=target_percent, log_level=lvl)
+        elif strategy == "pe":
+            from ..backtest.strategies.pe_sector_alpha import main as pe_main
+
+            pe_main()
 
         logger.info(f"{strategy.upper()} 策略回测完成！")
         return 0

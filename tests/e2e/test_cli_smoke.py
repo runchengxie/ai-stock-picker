@@ -65,7 +65,7 @@ class TestCLIParser:
         parser = create_parser()
 
         # Test valid strategy arguments.
-        for strategy in ["ai", "quant", "spy"]:
+        for strategy in ["ai", "quant", "pe", "spy"]:
             args = parser.parse_args(["backtest", strategy])
             assert args.command == "backtest"
             assert args.strategy == strategy
@@ -146,6 +146,16 @@ class TestCLIFunctions:
 
         assert result == 0
         mock_spy_main.assert_called_once()
+
+    @patch("stock_analysis.backtest.strategies.pe_sector_alpha.main")
+    def test_run_backtest_pe(self, mock_pe_main):
+        """Tests running the PE alpha backtest."""
+        mock_pe_main.return_value = None
+
+        result = run_backtest("pe")
+
+        assert result == 0
+        mock_pe_main.assert_called_once()
 
     def test_run_backtest_import_error(self):
         """Tests handling of an ImportError when running a backtest."""
