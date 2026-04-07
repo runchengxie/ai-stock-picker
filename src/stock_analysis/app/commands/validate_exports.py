@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..services.exports import validate_exports
-from ..logging import get_logger
+from ...shared.services.exports import validate_exports
+from ...shared.logging import get_logger
 
 logger = get_logger(__name__)
 

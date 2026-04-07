@@ -15,7 +15,7 @@ import pytest
 import yaml
 from dateutil.relativedelta import relativedelta
 
-from stock_analysis.config import (
+from stock_analysis.shared.config import (
     ReportSettings,
     get_backtest_period,
     get_initial_cash,
@@ -47,7 +47,7 @@ class TestLoadCfg:
             yaml.dump(config_data, f)
 
         # Mock the project root directory
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             mock_path(__file__).resolve.return_value.parents = [
                 None,
                 None,
@@ -75,7 +75,7 @@ class TestLoadCfg:
         with open(config_file, "w", encoding="utf-8") as f:
             yaml.dump(config_data, f)
 
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             mock_path(__file__).resolve.return_value.parents = [
                 None,
                 None,
@@ -89,7 +89,7 @@ class TestLoadCfg:
 
     def test_load_cfg_no_config_file(self):
         """Test using default configuration when no config file is found."""
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             # Mock a non-existent path
             mock_path(__file__).resolve.return_value.parents = [
                 None,
@@ -112,7 +112,7 @@ class TestLoadCfg:
         with open(config_file, "w", encoding="utf-8") as f:
             f.write("invalid: yaml: content: [")
 
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             mock_path(__file__).resolve.return_value.parents = [
                 None,
                 None,
@@ -139,7 +139,7 @@ class TestGetBacktestPeriod:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             start, end = get_backtest_period()
 
             assert start == datetime.date(2021, 4, 2)
@@ -155,7 +155,7 @@ class TestGetBacktestPeriod:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             start, end = get_backtest_period()
 
             assert start == datetime.date(2020, 1, 1)
@@ -174,7 +174,7 @@ class TestGetBacktestPeriod:
             datetime.date(2022, 7, 1): ["AMZN", "META"],
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             start, end = get_backtest_period(portfolios)
 
             assert start == datetime.date(2022, 1, 1)
@@ -185,7 +185,7 @@ class TestGetBacktestPeriod:
         """Test exception when portfolio data is missing in dynamic mode."""
         config_data = {"backtest": {"period_mode": "dynamic"}}
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             with pytest.raises(
                 ValueError, match="Dynamic mode requires portfolios data"
             ):
@@ -202,7 +202,7 @@ class TestGetBacktestPeriod:
 
         portfolios = {datetime.date(2023, 1, 15): ["SPY"]}
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             start, end = get_backtest_period(portfolios)
 
             assert start == datetime.date(2023, 1, 15)
@@ -217,7 +217,7 @@ class TestGetInitialCash:
         """Test the unified cash format."""
         config_data = {"backtest": {"initial_cash": 1500000}}
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             assert get_initial_cash("ai") == 1500000.0
             assert get_initial_cash("quant") == 1500000.0
             assert get_initial_cash("spy") == 1500000.0
@@ -230,7 +230,7 @@ class TestGetInitialCash:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             assert get_initial_cash("ai") == 2000000.0
             assert get_initial_cash("quant") == 1500000.0
             assert get_initial_cash("spy") == 500000.0
@@ -247,7 +247,7 @@ class TestGetInitialCash:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             assert get_initial_cash("ai") == 2000000.0
             assert get_initial_cash("quant") == 1000000.0  # Default value
             assert get_initial_cash("spy") == 500000.0
@@ -261,7 +261,7 @@ class TestGetInitialCash:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             assert get_initial_cash("ai") == 1000000.0
             assert get_initial_cash("quant") == 1000000.0
             assert get_initial_cash("spy") == 1000000.0
@@ -291,7 +291,7 @@ backtest:
         with open(config_file, "w", encoding="utf-8") as f:
             f.write(config_content)
 
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             mock_path(__file__).resolve.return_value.parents = [
                 None,
                 None,
@@ -329,7 +329,7 @@ backtest:
         with open(config_file, "w", encoding="utf-8") as f:
             f.write(config_content)
 
-        with patch("stock_analysis.config.Path") as mock_path:
+        with patch("stock_analysis.shared.config.Path") as mock_path:
             mock_path(__file__).resolve.return_value.parents = [
                 None,
                 None,
@@ -360,7 +360,7 @@ class TestGetReportSettings:
     def test_report_settings_defaults(self):
         """When no report section is configured, defaults are returned."""
 
-        with patch("stock_analysis.config.load_cfg", return_value={}):
+        with patch("stock_analysis.shared.config.load_cfg", return_value={}):
             settings = get_report_settings()
 
         assert settings == ReportSettings()
@@ -380,7 +380,7 @@ class TestGetReportSettings:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=config_data):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=config_data):
             settings = get_report_settings()
 
         assert settings.report_mode == "comparison_only"
@@ -398,7 +398,7 @@ class TestGetReportSettings:
             }
         }
 
-        with patch("stock_analysis.config.load_cfg", return_value=bad_config):
+        with patch("stock_analysis.shared.config.load_cfg", return_value=bad_config):
             with caplog.at_level("WARNING"):
                 settings = get_report_settings()
 

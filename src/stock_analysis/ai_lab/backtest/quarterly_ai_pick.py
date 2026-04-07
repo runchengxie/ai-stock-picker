@@ -14,9 +14,9 @@ from ...research.backtest.prep import (
     load_price_feeds,
     load_spy_data,
 )
-from ...config import get_backtest_period, get_initial_cash, get_report_settings
-from ...logging import setup_logging
-from ...utils.paths import (
+from ...shared.config import get_backtest_period, get_initial_cash, get_report_settings
+from ...shared.logging import setup_logging
+from ...shared.utils.paths import (
     AI_PORTFOLIO_FILE,
     AI_PORTFOLIO_JSON_DIR,
     DB_PATH,

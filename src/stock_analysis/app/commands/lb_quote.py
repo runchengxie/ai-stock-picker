@@ -3,9 +3,9 @@
 Handles command logic for stock quote queries.
 """
 
-from ..execution.renderers.table import render_quotes
-from ..execution.services.account_snapshot import get_quotes
-from ..logging import get_logger
+from ...execution.renderers.table import render_quotes
+from ...execution.services.account_snapshot import get_quotes
+from ...shared.logging import get_logger
 from .result import CommandResult
 
 logger = get_logger(__name__)

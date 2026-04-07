@@ -16,8 +16,8 @@ import re
 
 import pandas as pd
 
-from ..logging import get_logger
-from ..utils.paths import AI_PORTFOLIO_JSON_DIR, QUANT_PORTFOLIO_JSON_DIR
+from ..shared.logging import get_logger
+from ..shared.utils.paths import AI_PORTFOLIO_JSON_DIR, QUANT_PORTFOLIO_JSON_DIR
 
 logger = get_logger(__name__)
 

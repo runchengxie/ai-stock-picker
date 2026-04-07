@@ -7,14 +7,14 @@ from pathlib import Path
 
 import pandas as pd
 
-from ...logging import get_logger
+from ...shared.logging import get_logger
 
 # Use unified path configuration within the project
-from ...utils.paths import (  # noqa: F401
+from ...shared.utils.paths import (  # noqa: F401
     DATA_DIR,
     DB_PATH,
 )
-from ...utils.paths import (
+from ...shared.utils.paths import (
     PROJECT_ROOT as _PROJECT_ROOT,
 )
 

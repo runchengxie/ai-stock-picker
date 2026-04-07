@@ -37,7 +37,7 @@ def test_broker_directory_structure():
 @pytest.mark.unit
 def test_cli_contains_longport_commands():
     """Tests that the CLI file contains LongPort-related commands."""
-    cli_file = Path("src/stock_analysis/cli.py")
+    cli_file = Path("src/stock_analysis/app/cli.py")
     assert cli_file.exists(), "CLI file does not exist"
 
     content = cli_file.read_text(encoding="utf-8")

@@ -11,7 +11,7 @@ import pytest
 
 pd = pytest.importorskip("pandas")
 
-from stock_analysis.services.marketdata.risk_free import (
+from stock_analysis.shared.services.marketdata.risk_free import (
     RiskFreeCacheInfo,
     RiskFreeRateFetchError,
     RiskFreeRateService,

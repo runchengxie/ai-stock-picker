@@ -7,8 +7,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from ..services.exports import export_excel_to_json, export_json_to_excel
-from ..logging import get_logger
+from ...shared.services.exports import export_excel_to_json, export_json_to_excel
+from ...shared.logging import get_logger
 
 logger = get_logger(__name__)
 

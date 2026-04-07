@@ -30,7 +30,7 @@ dev = [
 cli = ["rich>=13"]
 
 [project.scripts]
-stockq = "stock_analysis.cli:app"
+stockq = "stock_analysis.app.cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

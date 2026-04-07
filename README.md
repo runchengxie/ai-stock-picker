@@ -621,14 +621,10 @@ graph TD;
 ├── src/
 │   └── stock_analysis/
 │       ├── __init__.py
-│       ├── cli.py                   # 命令行接口定义
-│       ├── commands/                # 统一 CLI 入口（胶水代码）
-│       │   ├── __init__.py
-│       │   ├── ai_pick.py
-│       │   ├── backtest.py
-│       │   ├── lb_account.py
-│       │   ├── risk_free.py
-│       │   └── ...
+│       ├── cli.py                   # 兼容入口，转发到 app/cli.py
+│       ├── app/                     # CLI / command dispatch
+│       │   ├── cli.py
+│       │   └── commands/
 │       ├── research/                # 主线研究域
 │       │   ├── backtest/            # 回测引擎、数据准备、研究策略
 │       │   ├── data/                # 数据装载
@@ -643,9 +639,14 @@ graph TD;
 │       ├── contracts/               # 跨工作流共享协议
 │       │   ├── portfolio_json.py
 │       │   └── targets.py
-│       ├── services/                # 通用服务（marketdata、exports 等）
-│       │   └── marketdata/
-│       └── utils/                   # 通用工具（路径、FX 等）
+│       └── shared/                  # 共享基础设施与通用工具
+│           ├── config/
+│           ├── io/
+│           ├── logging/
+│           ├── services/
+│           ├── utils/
+│           ├── fees.py
+│           └── models.py
 ├── .env
 ├── pyproject.toml
 └── README.md

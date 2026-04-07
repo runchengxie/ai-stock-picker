@@ -23,8 +23,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
-from ....config import get_initial_cash
-from ....utils.paths import DATA_DIR, OUTPUTS_DIR
+from ....shared.config import get_initial_cash
+from ....shared.utils.paths import DATA_DIR, OUTPUTS_DIR
 from ..engine import generate_report
 
 PE_COLUMN_MAP = {

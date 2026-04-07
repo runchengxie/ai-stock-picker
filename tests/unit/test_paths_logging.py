@@ -12,8 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
-from stock_analysis.logging import StrategyLogger, setup_logging
-from stock_analysis.utils.paths import (
+from stock_analysis.shared.logging import StrategyLogger, setup_logging
+from stock_analysis.shared.utils.paths import (
     AI_PORTFOLIO_FILE,
     DATA_DIR,
     DB_PATH,
@@ -44,7 +44,7 @@ class TestPaths:
 
     def test_get_project_root_in_interactive_environment(self, monkeypatch):
         """Tests getting the project root in an interactive environment."""
-        import stock_analysis.utils.paths as paths
+        import stock_analysis.shared.utils.paths as paths
 
         # Simulate the absence of __file__ and ensure cwd() is used
         monkeypatch.delattr(paths, "__file__", raising=False)
@@ -138,7 +138,7 @@ class TestSetupLogging:
     def test_logger_with_file_output(self, tmp_path):
         """Tests a logger with file output."""
         # Temporarily modify OUTPUTS_DIR
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             logger = setup_logging("file_logger", log_file="test.log")
 
             # Test logging a record
@@ -189,7 +189,7 @@ class TestSetupLogging:
 
     def test_logger_formatter(self, tmp_path):
         """Tests the log formatter."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             logger = setup_logging("format_test", log_file="format_test.log")
             logger.info("Format test message")
 
@@ -208,7 +208,7 @@ class TestSetupLogging:
 
     def test_ai_backtest_log_smoke_test(self, tmp_path):
         """Smoke test for the AI backtest log."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             # Simulate the AI backtest logger setup
             logger = setup_logging("ai_backtest", log_file="ai_backtest.log")
 
@@ -236,7 +236,7 @@ class TestStrategyLogger:
 
     def test_strategy_logger_with_logging(self, tmp_path):
         """Tests StrategyLogger when using the logging module."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             strategy_logger = StrategyLogger(
                 use_logging=True, logger_name="test_strategy"
             )
@@ -303,7 +303,7 @@ class TestStrategyLogger:
 
     def test_strategy_logger_with_real_logging(self, tmp_path):
         """Tests StrategyLogger with a real logging backend."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             # Create a StrategyLogger that uses the logging module
             strategy_logger = StrategyLogger(
                 use_logging=True, logger_name="real_logging_test"
@@ -334,7 +334,7 @@ class TestLoggingIntegration:
 
     def test_multiple_loggers_isolation(self, tmp_path):
         """Tests the isolation of multiple loggers."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             # Create two different loggers
             logger1 = setup_logging("logger1", log_file="log1.log")
             logger2 = setup_logging("logger2", log_file="log2.log")
@@ -355,7 +355,7 @@ class TestLoggingIntegration:
 
     def test_strategy_logger_compatibility(self, tmp_path):
         """Tests the compatibility between StrategyLogger and a standard logger."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             # Create a standard logger
             standard_logger = setup_logging("standard", log_file="standard.log")
 
@@ -393,7 +393,7 @@ class TestLoggingIntegration:
         monkeypatch.setattr(time, "time", fake_time_func)
         monkeypatch.setattr(time, "sleep", lambda _x: None)
 
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             logger = setup_logging("performance_test", filename="performance.log")
 
             start_time = time.time()
@@ -412,7 +412,7 @@ class TestLoggingIntegration:
 
     def test_unicode_logging_support(self, tmp_path):
         """Tests support for logging Unicode characters."""
-        with patch("stock_analysis.logging.OUTPUTS_DIR", tmp_path):
+        with patch("stock_analysis.shared.logging.OUTPUTS_DIR", tmp_path):
             logger = setup_logging("unicode_test", log_file="unicode.log")
 
             # Log messages containing Unicode characters

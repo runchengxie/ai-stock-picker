@@ -6,7 +6,7 @@ Provides JSON format data rendering functionality.
 import json
 from typing import Any
 
-from ...models import AccountSnapshot, Order, Quote, RebalanceResult
+from ...shared.models import AccountSnapshot, Order, Quote, RebalanceResult
 
 
 def _serialize_dataclass(obj: Any) -> dict[str, Any]:

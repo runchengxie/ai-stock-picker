@@ -14,8 +14,8 @@ import pandas as pd
 from dateutil.relativedelta import relativedelta  # type: ignore[import-untyped]
 from scipy.stats import zscore
 
-from ...config import get_preliminary_factor_weights
-from ...logging import get_logger
+from ...shared.config import get_preliminary_factor_weights
+from ...shared.logging import get_logger
 
 # --- Path Configuration ---
 try:

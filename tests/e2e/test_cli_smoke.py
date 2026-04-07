@@ -12,14 +12,14 @@ from unittest.mock import patch
 
 import pytest
 
-from stock_analysis.cli import (
+from stock_analysis.app.cli import (
     app,
     create_parser,
     main,
 )
-from stock_analysis.commands.ai_pick import run_ai_pick
-from stock_analysis.commands.backtest import run_backtest
-from stock_analysis.commands.load_data import run_load_data
+from stock_analysis.app.commands.ai_pick import run_ai_pick
+from stock_analysis.app.commands.backtest import run_backtest
+from stock_analysis.app.commands.load_data import run_load_data
 
 
 
@@ -243,7 +243,7 @@ class TestMainFunction:
             captured = capsys.readouterr()
             assert "usage:" in captured.out or "stockq" in captured.out
 
-    @patch("stock_analysis.cli.run_backtest")
+    @patch("stock_analysis.app.cli.run_backtest")
     def test_main_backtest_command(self, mock_run_backtest):
         """Tests that the main function handles the backtest command."""
         mock_run_backtest.return_value = 0
@@ -254,7 +254,7 @@ class TestMainFunction:
             assert result == 0
             mock_run_backtest.assert_called_once_with("ai", None)
 
-    @patch("stock_analysis.cli.run_load_data")
+    @patch("stock_analysis.app.cli.run_load_data")
     def test_main_load_data_command(self, mock_run_load_data):
         """Tests that the main function handles the load-data command."""
         mock_run_load_data.return_value = 0
@@ -265,7 +265,7 @@ class TestMainFunction:
             assert result == 0
             mock_run_load_data.assert_called_once_with(None)
 
-    @patch("stock_analysis.cli.run_ai_pick")
+    @patch("stock_analysis.app.cli.run_ai_pick")
     def test_main_ai_pick_command(self, mock_run_ai_pick):
         """Tests that the main function handles the ai-pick command."""
         mock_run_ai_pick.return_value = 0
@@ -289,7 +289,7 @@ class TestMainFunction:
 class TestAppFunction:
     """Tests the application entry point function."""
 
-    @patch("stock_analysis.cli.main")
+    @patch("stock_analysis.app.cli.main")
     def test_app_calls_main_and_exits(self, mock_main):
         """Tests that the app function calls main and exits."""
         mock_main.return_value = 0
@@ -300,7 +300,7 @@ class TestAppFunction:
         assert exc_info.value.code == 0
         mock_main.assert_called_once()
 
-    @patch("stock_analysis.cli.main")
+    @patch("stock_analysis.app.cli.main")
     def test_app_exits_with_error_code(self, mock_main):
         """Tests that the app function exits with an error code."""
         mock_main.return_value = 1

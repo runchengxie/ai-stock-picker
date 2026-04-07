@@ -11,21 +11,21 @@ from typing import Tuple
 
 import pandas as pd
 
-from ..logging import get_logger
-from ..utils.paths import (
+from ...shared.logging import get_logger
+from ...shared.utils.paths import (
     AI_PORTFOLIO_FILE,
     AI_PORTFOLIO_JSON_DIR,
     OUTPUTS_DIR,
     QUANT_PORTFOLIO_FILE,
     QUANT_PORTFOLIO_JSON_DIR,
 )
-from ..contracts.targets import write_targets_json
-from ..io.excel import (
+from ...contracts.targets import write_targets_json
+from ...shared.io.excel import (
     get_sheet_names,
     pick_latest_sheet,
     read_excel_data,
 )
-from ..contracts.portfolio_json import (
+from ...contracts.portfolio_json import (
     find_result_json_for_date,
     pick_latest_result_json,
     read_result_json_tickers,

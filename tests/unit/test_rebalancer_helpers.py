@@ -5,7 +5,7 @@ from unittest.mock import patch
 import pytest
 from stock_analysis.contracts.targets import TargetEntry
 from stock_analysis.execution.services.rebalancer import FeeSchedule, RebalanceService
-from stock_analysis.models import AccountSnapshot, Position, Quote
+from stock_analysis.shared.models import AccountSnapshot, Position, Quote
 
 
 def make_snapshot():

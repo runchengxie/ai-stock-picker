@@ -27,8 +27,8 @@ except Exception:  # pragma: no cover - library is optional
     genai = _DummyGenAI()  # type: ignore
 from pydantic import BaseModel, Field
 
-from ...config import get_ai_prompt_version
-from ...logging import get_logger
+from ...shared.config import get_ai_prompt_version
+from ...shared.logging import get_logger
 
 # --- Paths and Configuration ---
 PROJECT_ROOT = Path(__file__).resolve().parents[4]

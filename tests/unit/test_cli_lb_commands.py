@@ -6,7 +6,7 @@ import sys
 from pathlib import Path
 
 import pytest
-import stock_analysis.cli as cli
+import stock_analysis.app.cli as cli
 
 
 @pytest.mark.unit
@@ -19,7 +19,7 @@ def test_cli_dispatch_lb_quote(monkeypatch):
         return 0
 
     monkeypatch.setattr(
-        "stock_analysis.commands.lb_quote.run_lb_quote", fake_run_lb_quote
+        "stock_analysis.app.commands.lb_quote.run_lb_quote", fake_run_lb_quote
     )
 
     with patch.object(sys, "argv", ["stockq", "lb-quote", "AAPL", "MSFT"]):

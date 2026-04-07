@@ -3,7 +3,7 @@
 Provides table format data rendering functionality.
 """
 
-from ...models import AccountSnapshot, Order, Quote, RebalanceResult
+from ...shared.models import AccountSnapshot, Order, Quote, RebalanceResult
 
 
 def render_quotes(quotes: list[Quote]) -> str:

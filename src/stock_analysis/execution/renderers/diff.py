@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
-from ...models import AccountSnapshot, Order, Position, RebalanceResult
+from ...shared.models import AccountSnapshot, Order, Position, RebalanceResult
 
 _HAS_RICH = importlib.util.find_spec("rich") is not None
 

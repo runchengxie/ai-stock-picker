@@ -13,8 +13,8 @@ from ..prep import (
     load_price_feeds,
     load_spy_data,
 )
-from ....config import get_backtest_period, get_initial_cash, get_report_settings
-from ....utils.paths import (
+from ....shared.config import get_backtest_period, get_initial_cash, get_report_settings
+from ....shared.utils.paths import (
     DB_PATH,
     OUTPUTS_DIR,
     QUANT_PORTFOLIO_FILE,

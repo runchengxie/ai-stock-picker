@@ -22,9 +22,9 @@ from backtrader.metabase import findowner
 # no ``Cerebro`` owner is found.
 from backtrader.strategy import MetaStrategy
 
-from ...logging import StrategyLogger
-from ...services.marketdata import RiskFreeRateService, RiskFreeRateServiceError
-from ...utils.paths import OUTPUTS_DIR
+from ...shared.logging import StrategyLogger
+from ...shared.services.marketdata import RiskFreeRateService, RiskFreeRateServiceError
+from ...shared.utils.paths import OUTPUTS_DIR
 from .prep import DividendPandasData
 
 

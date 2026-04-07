@@ -6,9 +6,9 @@ rebalance plans.
 
 from pathlib import Path
 
-from ..contracts.targets import read_targets_json
-from ..execution.renderers.diff import render_rebalance_diff
-from ..logging import get_logger
+from ...contracts.targets import read_targets_json
+from ...execution.renderers.diff import render_rebalance_diff
+from ...shared.logging import get_logger
 from .result import CommandResult
 
 logger = get_logger(__name__)
@@ -67,11 +67,11 @@ def run_lb_rebalance(
             return CommandResult(exit_code=1, stderr=msg)
 
         # Import heavy dependencies lazily after basic validation
-        from ..execution.services.account_snapshot import (
+        from ...execution.services.account_snapshot import (
             get_account_snapshot,
             get_quotes,
         )
-        from ..execution.services.rebalancer import RebalanceService
+        from ...execution.services.rebalancer import RebalanceService
 
         # Read canonical target file
         try:
@@ -88,7 +88,7 @@ def run_lb_rebalance(
             return CommandResult(exit_code=1, stderr=str(e))
 
         # Build single client throughout the process to avoid repeated initialization causing multiple permission table prints
-        from ..execution.broker.longport_client import LongPortClient
+        from ...execution.broker.longport_client import LongPortClient
 
         client = LongPortClient(env=env)
         # Get account snapshot (without quotes, will fetch all at once later)
@@ -97,7 +97,7 @@ def run_lb_rebalance(
         )
 
         # Fetch quotes all at once: target stocks + existing positions
-        from ..execution.broker.longport_client import _to_lb_symbol
+        from ...execution.broker.longport_client import _to_lb_symbol
 
         target_syms = {
             _to_lb_symbol(target.symbol, market=target.market) for target in tg.targets

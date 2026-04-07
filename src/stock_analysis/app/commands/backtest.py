@@ -5,7 +5,7 @@ Handles command logic for backtest analysis.
 
 import logging
 
-from ..logging import get_logger
+from ...shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -45,21 +45,21 @@ def run_backtest(
         lvl = _parse_log_level(log_level)
 
         if strategy == "ai":
-            from ..ai_lab.backtest.quarterly_ai_pick import main as ai_main
+            from ...ai_lab.backtest.quarterly_ai_pick import main as ai_main
 
             ai_main(log_level=lvl)
         elif strategy == "quant":
-            from ..research.backtest.strategies.quarterly_unpicked import (
+            from ...research.backtest.strategies.quarterly_unpicked import (
                 main as quant_main,
             )
 
             quant_main(log_level=lvl)
         elif strategy == "spy":
-            from ..research.backtest.strategies.benchmark_spy import main as spy_main
+            from ...research.backtest.strategies.benchmark_spy import main as spy_main
 
             spy_main(target_percent=target_percent, log_level=lvl)
         elif strategy == "pe":
-            from ..research.backtest.strategies.pe_sector_alpha import main as pe_main
+            from ...research.backtest.strategies.pe_sector_alpha import main as pe_main
 
             pe_main()
 

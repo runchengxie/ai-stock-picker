@@ -3,7 +3,7 @@
 Handles command logic for AI stock picking analysis.
 """
 
-from ..logging import get_logger
+from ...shared.logging import get_logger
 
 logger = get_logger(__name__)
 
@@ -31,7 +31,7 @@ def run_ai_pick(
         if output:
             logger.info(f"输出文件：{output}")
 
-        from ..ai_lab.selection.ai_stock_pick import main as ai_pick_main
+        from ...ai_lab.selection.ai_stock_pick import main as ai_pick_main
 
         export_excel = not no_excel
         export_json = not no_json

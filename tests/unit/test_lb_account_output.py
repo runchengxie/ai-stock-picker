@@ -14,7 +14,7 @@ from unittest.mock import patch
 import pytest
 
 from stock_analysis import cli
-from stock_analysis.models import AccountSnapshot, Position
+from stock_analysis.shared.models import AccountSnapshot, Position
 
 
 def make_snapshot(
@@ -36,7 +36,7 @@ class TestLBAccountTableOutput:
         """Test that the command prints both cash and positions in a table."""
         snap = make_snapshot(1234.56, [("AAPL.US", 10, 199.99)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             assert (
@@ -52,7 +52,7 @@ class TestLBAccountTableOutput:
         """Test the table output with both funds and multiple positions."""
         snap = make_snapshot(5000.0, [("AAPL.US", 10, 150.0), ("MSFT.US", 5, 300.0)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(
@@ -69,7 +69,7 @@ class TestLBAccountTableOutput:
         """Test that only the cash balance is shown when --only-funds is used."""
         snap = make_snapshot(2500.75, [("AAPL.US", 10, 150.0)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(
@@ -86,7 +86,7 @@ class TestLBAccountTableOutput:
         """Test that only the positions table is shown when --only-positions is used."""
         snap = make_snapshot(1000.0, [("GOOGL.US", 2, 2500.0), ("AMZN.US", 1, 3000.0)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(
@@ -104,7 +104,7 @@ class TestLBAccountTableOutput:
         """Test the output when the account has cash but no positions."""
         snap = make_snapshot(1000.0, [])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(
@@ -124,7 +124,7 @@ class TestLBAccountJsonOutput:
         """Test that the command produces valid JSON output for the account snapshot."""
         snap = make_snapshot(1500.5, [("AAPL.US", 10, 150.05)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(fmt="json")
@@ -157,7 +157,7 @@ class TestLBAccountErrorHandling:
     def test_client_connection_error(self, capsys):
         """Test the error message for a generic client connection failure."""
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             side_effect=Exception("Connection failed"),
         ):
             result = cli.run_lb_account(fmt="table")
@@ -169,7 +169,7 @@ class TestLBAccountErrorHandling:
     def test_portfolio_snapshot_error_no_fallback(self, capsys):
         """Test that an API error during snapshot fetching is handled correctly."""
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             side_effect=Exception("API Error"),
         ):
             result = cli.run_lb_account(fmt="json")
@@ -187,7 +187,7 @@ class TestLBAccountParameterValidation:
         """Test that an invalid format falls back to the default 'table' format."""
         snap = make_snapshot(1000.0, [])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             result = cli.run_lb_account(fmt="xml") # 'xml' is not a supported format
@@ -203,7 +203,7 @@ class TestLBAccountParameterValidation:
         """Test the behavior with conflicting flags (--only-funds and --only-positions)."""
         snap = make_snapshot(1000.0, [("AAPL.US", 10, 150.0)])
         with patch(
-            "stock_analysis.commands.lb_account.get_account_snapshot",
+            "stock_analysis.app.commands.lb_account.get_account_snapshot",
             return_value=snap,
         ):
             # When both flags are true, --only-funds should take precedence

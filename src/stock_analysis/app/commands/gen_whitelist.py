@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pandas as pd
 
-from ..logging import get_logger
-from ..utils.paths import (
+from ...shared.logging import get_logger
+from ...shared.utils.paths import (
     AI_PORTFOLIO_FILE,
     OUTPUTS_DIR,
     QUANT_PORTFOLIO_FILE,

@@ -9,9 +9,9 @@ try:
     from ..broker.longport_client import LongPortClient
 except ImportError:  # pragma: no cover - allow tests without LongPort dependencies
     LongPortClient = None  # type: ignore
-from ...models import AccountSnapshot, Position, Quote
-from ...utils.fx import to_usd
-from ...logging import get_logger
+from ...shared.models import AccountSnapshot, Position, Quote
+from ...shared.utils.fx import to_usd
+from ...shared.logging import get_logger
 
 logger = get_logger(__name__)
 
