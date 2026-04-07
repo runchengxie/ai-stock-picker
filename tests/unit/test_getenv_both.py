@@ -1,5 +1,5 @@
 import pytest
-from stock_analysis.broker.longport_client import getenv_both
+from stock_analysis.execution.broker.longport_client import getenv_both
 
 pytestmark = pytest.mark.unit
 

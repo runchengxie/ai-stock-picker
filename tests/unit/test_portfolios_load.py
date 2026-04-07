@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 import json
 
-from stock_analysis.backtest.prep import load_portfolios, tidy_ticker
+from stock_analysis.research.backtest.prep import load_portfolios, tidy_ticker
 
 
 class TestTidyTicker:

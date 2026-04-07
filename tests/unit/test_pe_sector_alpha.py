@@ -2,7 +2,7 @@ import datetime as dt
 
 import pandas as pd
 
-from stock_analysis.backtest.strategies.pe_sector_alpha import (
+from stock_analysis.research.backtest.strategies.pe_sector_alpha import (
     PeSectorAlphaSettings,
     _build_benchmark_series,
     _build_portfolios,

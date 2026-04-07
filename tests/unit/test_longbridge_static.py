@@ -24,16 +24,14 @@ def test_broker_directory_structure():
     """Tests if the broker directory structure is correct."""
     project_root = Path(".")
 
-    # Check canonical execution broker directory and legacy compatibility shim.
+    # Check canonical execution broker directory.
     broker_dir = project_root / "src" / "stock_analysis" / "execution" / "broker"
     broker_init = broker_dir / "__init__.py"
     longport_client = broker_dir / "longport_client.py"
-    legacy_shim = project_root / "src" / "stock_analysis" / "broker" / "longport_client.py"
 
     assert broker_dir.exists(), "broker directory does not exist"
     assert broker_init.exists(), "broker/__init__.py does not exist"
     assert longport_client.exists(), "longport_client.py does not exist"
-    assert legacy_shim.exists(), "legacy broker compatibility shim does not exist"
 
 
 @pytest.mark.unit

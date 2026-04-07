@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 from stock_analysis.commands import targets as targets_cmd
-from stock_analysis.utils.targets import read_targets_json, write_targets_json
+from stock_analysis.contracts.targets import read_targets_json, write_targets_json
 
 
 @pytest.mark.unit

@@ -14,8 +14,8 @@ from unittest.mock import patch
 
 import pandas as pd
 import pytest
-from stock_analysis.backtest.prep import load_price_feeds, load_spy_data
-from stock_analysis.services.data.load_data_to_db import main as load_data_main
+from stock_analysis.research.backtest.prep import load_price_feeds, load_spy_data
+from stock_analysis.research.data.load_data_to_db import main as load_data_main
 
 pytestmark = pytest.mark.integration
 
@@ -424,9 +424,9 @@ class TestLoadDataToDb:
         db_path = data_dir / "financial_data.db"
 
         # Mock path configurations
-        with patch("stock_analysis.services.data.load_data_to_db.PROJECT_ROOT", tmp_path):
-            with patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", data_dir):
-                with patch("stock_analysis.services.data.load_data_to_db.DB_PATH", db_path):
+        with patch("stock_analysis.research.data.load_data_to_db.PROJECT_ROOT", tmp_path):
+            with patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", data_dir):
+                with patch("stock_analysis.research.data.load_data_to_db.DB_PATH", db_path):
                     # Execute the database creation
                     load_data_main()
 

@@ -14,7 +14,7 @@ from unittest.mock import Mock, patch
 
 import pandas as pd
 import pytest
-from stock_analysis.services.data.load_data_to_db import (
+from stock_analysis.research.data.load_data_to_db import (
     _check_sqlite3_cli,
     _import_prices_with_cli,
     _load_csv_in_chunks,
@@ -254,17 +254,17 @@ class TestMainFunctionBranches:
         )
 
         with (
-            patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", tmp_path),
-            patch("stock_analysis.services.data.load_data_to_db.DB_PATH", db_path),
+            patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", tmp_path),
+            patch("stock_analysis.research.data.load_data_to_db.DB_PATH", db_path),
             patch(
-                "stock_analysis.services.data.load_data_to_db._check_sqlite3_cli", return_value=True
+                "stock_analysis.research.data.load_data_to_db._check_sqlite3_cli", return_value=True
             ),
             patch(
-                "stock_analysis.services.data.load_data_to_db._import_prices_with_cli",
+                "stock_analysis.research.data.load_data_to_db._import_prices_with_cli",
                 return_value=True,
             ) as mock_cli_import,
             patch(
-                "stock_analysis.services.data.load_data_to_db._load_csv_in_chunks",
+                "stock_analysis.research.data.load_data_to_db._load_csv_in_chunks",
                 return_value=100,
             ) as mock_chunks,
             patch("sqlite3.connect") as mock_connect,
@@ -289,16 +289,16 @@ class TestMainFunctionBranches:
         )
 
         with (
-            patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", tmp_path),
-            patch("stock_analysis.services.data.load_data_to_db.DB_PATH", db_path),
+            patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", tmp_path),
+            patch("stock_analysis.research.data.load_data_to_db.DB_PATH", db_path),
             patch(
-                "stock_analysis.services.data.load_data_to_db._check_sqlite3_cli", return_value=False
+                "stock_analysis.research.data.load_data_to_db._check_sqlite3_cli", return_value=False
             ),
             patch(
-                "stock_analysis.services.data.load_data_to_db._import_prices_with_cli"
+                "stock_analysis.research.data.load_data_to_db._import_prices_with_cli"
             ) as mock_cli_import,
             patch(
-                "stock_analysis.services.data.load_data_to_db._load_csv_in_chunks",
+                "stock_analysis.research.data.load_data_to_db._load_csv_in_chunks",
                 return_value=100,
             ) as mock_chunks,
             patch("sqlite3.connect") as mock_connect,
@@ -328,17 +328,17 @@ class TestMainFunctionBranches:
         )
 
         with (
-            patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", tmp_path),
-            patch("stock_analysis.services.data.load_data_to_db.DB_PATH", db_path),
+            patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", tmp_path),
+            patch("stock_analysis.research.data.load_data_to_db.DB_PATH", db_path),
             patch(
-                "stock_analysis.services.data.load_data_to_db._check_sqlite3_cli", return_value=True
+                "stock_analysis.research.data.load_data_to_db._check_sqlite3_cli", return_value=True
             ),
             patch(
-                "stock_analysis.services.data.load_data_to_db._import_prices_with_cli",
+                "stock_analysis.research.data.load_data_to_db._import_prices_with_cli",
                 return_value=False,
             ),
             patch(
-                "stock_analysis.services.data.load_data_to_db._load_csv_in_chunks", return_value=100
+                "stock_analysis.research.data.load_data_to_db._load_csv_in_chunks", return_value=100
             ) as mock_chunks,
             patch("sqlite3.connect") as mock_connect,
         ):
@@ -356,8 +356,8 @@ class TestMainFunctionBranches:
 
         # Do not create any files to test missing file handling
         with (
-            patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", tmp_path),
-            patch("stock_analysis.services.data.load_data_to_db.DB_PATH", db_path),
+            patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", tmp_path),
+            patch("stock_analysis.research.data.load_data_to_db.DB_PATH", db_path),
             patch("sqlite3.connect") as mock_connect,
         ):
             mock_con = Mock()

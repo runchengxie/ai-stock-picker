@@ -3,9 +3,9 @@ from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
+from stock_analysis.contracts.targets import TargetEntry
+from stock_analysis.execution.services.rebalancer import FeeSchedule, RebalanceService
 from stock_analysis.models import AccountSnapshot, Position, Quote
-from stock_analysis.services.rebalancer import FeeSchedule, RebalanceService
-from stock_analysis.utils.targets import TargetEntry
 
 
 def make_snapshot():
@@ -16,7 +16,7 @@ def make_snapshot():
 def test_fetch_quotes():
     svc = RebalanceService()
     with (
-        patch("stock_analysis.services.rebalancer.get_quotes") as mock_get,
+        patch("stock_analysis.execution.services.rebalancer.get_quotes") as mock_get,
         patch.object(RebalanceService, "_get_client", return_value=object()),
     ):
         mock_get.return_value = {

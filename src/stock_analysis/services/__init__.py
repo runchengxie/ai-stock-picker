@@ -1,9 +1,5 @@
-"""Service Layer Module
+"""Shared service modules that remain outside the domain packages."""
 
-This package contains all the pure functions and classes for business logic.
-Service layer functions only accept parameters and return structured results, they do not perform I/O operations or print.
-"""
+from . import exports, marketdata
 
-from . import data, selection
-
-__all__ = ["data", "selection"]
+__all__ = ["exports", "marketdata"]

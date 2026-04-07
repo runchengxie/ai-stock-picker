@@ -11,7 +11,7 @@ Tests the core functionality of the data cleaning function:
 import pandas as pd
 import pytest
 
-from stock_analysis.services.data.load_data_to_db import tidy_ticker
+from stock_analysis.research.data.load_data_to_db import tidy_ticker
 
 
 @pytest.mark.unit

@@ -8,7 +8,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.requires_api]
 # Try to import longport, skip all tests if it fails
 longport = pytest.importorskip("longport")
 
-from stock_analysis.broker.longport_client import LongPortClient, get_config
+from stock_analysis.execution.broker.longport_client import LongPortClient, get_config
 
 
 def check_longport_credentials():

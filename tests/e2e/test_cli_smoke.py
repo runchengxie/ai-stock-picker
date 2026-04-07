@@ -117,7 +117,7 @@ class TestCLIParser:
 class TestCLIFunctions:
     """Tests the CLI command functions."""
 
-    @patch("stock_analysis.backtest.strategies.quarterly_ai_pick.main")
+    @patch("stock_analysis.ai_lab.backtest.quarterly_ai_pick.main")
     def test_run_backtest_ai(self, mock_ai_main):
         """Tests running the AI backtest."""
         mock_ai_main.return_value = None
@@ -127,7 +127,7 @@ class TestCLIFunctions:
         assert result == 0
         mock_ai_main.assert_called_once()
 
-    @patch("stock_analysis.backtest.strategies.quarterly_unpicked.main")
+    @patch("stock_analysis.research.backtest.strategies.quarterly_unpicked.main")
     def test_run_backtest_quant(self, mock_quant_main):
         """Tests running the quant backtest."""
         mock_quant_main.return_value = None
@@ -137,7 +137,7 @@ class TestCLIFunctions:
         assert result == 0
         mock_quant_main.assert_called_once()
 
-    @patch("stock_analysis.backtest.strategies.benchmark_spy.main")
+    @patch("stock_analysis.research.backtest.strategies.benchmark_spy.main")
     def test_run_backtest_spy(self, mock_spy_main):
         """Tests running the SPY backtest."""
         mock_spy_main.return_value = None
@@ -147,7 +147,7 @@ class TestCLIFunctions:
         assert result == 0
         mock_spy_main.assert_called_once()
 
-    @patch("stock_analysis.backtest.strategies.pe_sector_alpha.main")
+    @patch("stock_analysis.research.backtest.strategies.pe_sector_alpha.main")
     def test_run_backtest_pe(self, mock_pe_main):
         """Tests running the PE alpha backtest."""
         mock_pe_main.return_value = None
@@ -168,13 +168,13 @@ class TestCLIFunctions:
     def test_run_backtest_execution_error(self):
         """Tests handling of an execution error during a backtest."""
         with patch(
-            "stock_analysis.backtest.strategies.quarterly_ai_pick.main",
+            "stock_analysis.ai_lab.backtest.quarterly_ai_pick.main",
             side_effect=Exception("Execution failed"),
         ):
             result = run_backtest("ai")
             assert result == 1
 
-    @patch("stock_analysis.services.data.load_data_to_db.main")
+    @patch("stock_analysis.research.data.load_data_to_db.main")
     def test_run_load_data_success(self, mock_load_main):
         """Tests successful execution of data loading."""
         mock_load_main.return_value = None
@@ -184,7 +184,7 @@ class TestCLIFunctions:
         assert result == 0
         mock_load_main.assert_called_once()
 
-    @patch("stock_analysis.services.data.load_data_to_db.main")
+    @patch("stock_analysis.research.data.load_data_to_db.main")
     def test_run_load_data_with_custom_dir(self, mock_load_main):
         """Tests data loading with a custom directory."""
         mock_load_main.return_value = None
@@ -202,7 +202,7 @@ class TestCLIFunctions:
             result = run_load_data()
             assert result == 1
 
-    @patch("stock_analysis.services.selection.ai_stock_pick.main")
+    @patch("stock_analysis.ai_lab.selection.ai_stock_pick.main")
     def test_run_ai_pick_success(self, mock_ai_pick_main):
         """Tests successful execution of AI stock picking."""
         mock_ai_pick_main.return_value = None
@@ -212,7 +212,7 @@ class TestCLIFunctions:
         assert result == 0
         mock_ai_pick_main.assert_called_once()
 
-    @patch("stock_analysis.services.selection.ai_stock_pick.main")
+    @patch("stock_analysis.ai_lab.selection.ai_stock_pick.main")
     def test_run_ai_pick_with_params(self, mock_ai_pick_main):
         """Tests AI stock picking with parameters."""
         mock_ai_pick_main.return_value = None
@@ -361,9 +361,9 @@ class TestCLISmokeTests:
     def test_module_execution_smoke_test(self):
         """Smoke test for module execution via the `-m` flag."""
         modules_to_test = [
-            "stock_analysis.backtest.strategies.quarterly_ai_pick",
-            "stock_analysis.backtest.strategies.quarterly_unpicked",
-            "stock_analysis.backtest.strategies.benchmark_spy",
+            "stock_analysis.ai_lab.backtest.quarterly_ai_pick",
+            "stock_analysis.research.backtest.strategies.quarterly_unpicked",
+            "stock_analysis.research.backtest.strategies.benchmark_spy",
         ]
 
         for module in modules_to_test:
@@ -419,10 +419,10 @@ class TestCLIIntegration:
         (data_dir / "us-income-ttm.csv").write_text(income_content)
 
         # Simulate the `load-data` command.
-        with patch("stock_analysis.services.data.load_data_to_db.PROJECT_ROOT", tmp_path):
-            with patch("stock_analysis.services.data.load_data_to_db.DATA_DIR", data_dir):
+        with patch("stock_analysis.research.data.load_data_to_db.PROJECT_ROOT", tmp_path):
+            with patch("stock_analysis.research.data.load_data_to_db.DATA_DIR", data_dir):
                 with patch(
-                    "stock_analysis.services.data.load_data_to_db.DB_PATH", data_dir / "test.db"
+                    "stock_analysis.research.data.load_data_to_db.DB_PATH", data_dir / "test.db"
                 ):
                     result = run_load_data(str(data_dir))
 

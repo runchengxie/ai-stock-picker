@@ -24,7 +24,7 @@ pytest.importorskip("pydantic")
 from pydantic import ValidationError
 
 # Imports from the application's own code
-from stock_analysis.services.selection.ai_stock_pick import (
+from stock_analysis.ai_lab.selection.ai_stock_pick import (
     AIStockPick,
     Circuit,
     KeyPool,
@@ -596,7 +596,7 @@ class TestCreateKeyPool:
             "GEMINI_API_KEY_3": "key3",
         },
     )
-    @patch("stock_analysis.services.selection.ai_stock_pick.genai.GenerativeModel")
+    @patch("stock_analysis.ai_lab.selection.ai_stock_pick.genai.GenerativeModel")
     def test_create_pool_with_all_keys(self, mock_model):
         """Tests creating a pool when all expected API key env vars are present."""
         mock_model.return_value = Mock()  # Mock the AI model client.
@@ -620,7 +620,7 @@ class TestCreateKeyPool:
             # Missing GEMINI_API_KEY_3
         },
     )
-    @patch("stock_analysis.services.selection.ai_stock_pick.genai.GenerativeModel")
+    @patch("stock_analysis.ai_lab.selection.ai_stock_pick.genai.GenerativeModel")
     def test_create_pool_with_partial_keys(self, mock_model):
         """Tests creating a pool with only a subset of keys available."""
         mock_model.return_value = Mock()
@@ -643,7 +643,7 @@ class TestCreateKeyPool:
             "GEMINI_API_KEY_2": "key2",
         },
     )
-    @patch("stock_analysis.services.selection.ai_stock_pick.genai.GenerativeModel")
+    @patch("stock_analysis.ai_lab.selection.ai_stock_pick.genai.GenerativeModel")
     def test_create_pool_filter_empty_keys(self, mock_model):
         """Tests that empty string API keys are ignored."""
         mock_model.return_value = Mock()

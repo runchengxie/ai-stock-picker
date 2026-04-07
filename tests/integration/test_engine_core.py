@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pytest
 bt = pytest.importorskip("backtrader")
-from stock_analysis.backtest.engine import (
+from stock_analysis.research.backtest.engine import (
     BuyAndHoldStrategy,
     PointInTimeStrategy,
     generate_report,
@@ -30,7 +30,7 @@ pytestmark = pytest.mark.integration
 def mock_risk_free_service():
     """Patch the risk-free service to avoid network/database dependencies."""
 
-    with patch("stock_analysis.backtest.engine._get_risk_free_service") as mock_factory:
+    with patch("stock_analysis.research.backtest.engine._get_risk_free_service") as mock_factory:
         service = MagicMock()
 
         def _compute_sharpe(returns: pd.Series) -> float | None:

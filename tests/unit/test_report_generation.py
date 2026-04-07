@@ -14,14 +14,14 @@ from unittest.mock import Mock, patch
 import pandas as pd
 import pytest
 
-from stock_analysis.backtest.engine import generate_report
+from stock_analysis.research.backtest.engine import generate_report
 
 
 @pytest.fixture()
 def patched_risk_free_service():
     """Provide a stub risk-free service for report generation tests."""
 
-    with patch("stock_analysis.backtest.engine._get_risk_free_service") as mock_factory:
+    with patch("stock_analysis.research.backtest.engine._get_risk_free_service") as mock_factory:
         service = Mock()
         service.default_series = "DGS3MO"
         service.get_series_for_index.side_effect = (

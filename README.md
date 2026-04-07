@@ -643,18 +643,13 @@ graph TD;
 │       ├── contracts/               # 跨工作流共享协议
 │       │   ├── portfolio_json.py
 │       │   └── targets.py
-│       ├── services/                # 兼容层 + 通用服务（marketdata 等）
+│       ├── services/                # 通用服务（marketdata、exports 等）
 │       │   └── marketdata/
-│       ├── backtest/                # 向后兼容导入壳
-│       ├── broker/                  # 向后兼容导入壳
-│       ├── renderers/               # 通用渲染 + 兼容壳
-│       └── utils/                   # 通用工具（路径、FX 等）与兼容壳
+│       └── utils/                   # 通用工具（路径、FX 等）
 ├── .env
 ├── pyproject.toml
 └── README.md
 ```
-
-> 说明：`research / ai_lab / execution / contracts` 现在是实际实现所在目录；旧的 `backtest / broker / services / utils` 路径保留为兼容层，方便现有脚本和测试逐步迁移。
 
 ## 数据源
 

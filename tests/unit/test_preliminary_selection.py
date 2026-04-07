@@ -14,7 +14,7 @@ import pandas as pd
 import pytest
 from dateutil.relativedelta import relativedelta
 
-from stock_analysis.preliminary_selection import (
+from stock_analysis.research.selection.preliminary_selection import (
     calc_factor_scores,
     calculate_factors_point_in_time,
 )

@@ -4,8 +4,8 @@ from unittest.mock import MagicMock, patch
 import pandas as pd
 import pandas.testing as pdt
 import pytest
-from stock_analysis.backtest.engine import run_quarterly_backtest
-from stock_analysis.backtest.prep import DividendPandasData
+from stock_analysis.research.backtest.engine import run_quarterly_backtest
+from stock_analysis.research.backtest.prep import DividendPandasData
 
 pytestmark = pytest.mark.unit
 
@@ -14,7 +14,7 @@ pytestmark = pytest.mark.unit
 def mock_risk_free_service():
     """Patch risk-free service for deterministic Sharpe calculations."""
 
-    with patch("stock_analysis.backtest.engine._get_risk_free_service") as mock_factory:
+    with patch("stock_analysis.research.backtest.engine._get_risk_free_service") as mock_factory:
         service = MagicMock()
         service.default_series = "DGS3MO"
 

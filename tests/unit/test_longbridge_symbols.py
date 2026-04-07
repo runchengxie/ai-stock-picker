@@ -1,6 +1,6 @@
 import pytest
 
-from stock_analysis.broker.longport_client import _to_lb_symbol
+from stock_analysis.execution.broker.longport_client import _to_lb_symbol
 
 
 @pytest.mark.unit
