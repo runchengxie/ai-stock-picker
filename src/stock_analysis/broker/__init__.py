@@ -1,5 +1,2 @@
-"""Broker integration module for stock analysis.
+"""Compatibility package for legacy broker imports."""
 
-This module provides interfaces to various brokers for real-time quotes,
-historical data, and trading functionality.
-"""

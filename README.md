@@ -1,8 +1,12 @@
-# AI 增强的多因子量化选股策略
+# 量化研究、AI Lab 与执行平台
 
-该项目采用两阶段的量化选股策略。第一阶段使用传统的多因子模型进行初步筛选；第二阶段则利用`gemini-2.5-pro`模型，以后价值投资者的视角对初选列表进行深度分析和精选，最终构建投资组合并使用`backtrader`进行回测。
+该项目现在按三个逻辑边界组织，但仍保留在同一个仓库中：
 
-项目利用`SQLite`进行数据管理，并通过`config/config.yaml`进行统一的参数配置。所有核心操作都通过`stockq`命令行工具执行。
+- `research`：数据准备、规则量化选股、组合快照生成与回测，是项目主线。
+- `ai-lab`：基于 `gemini-2.5-pro` 的实验性股票筛选与解释生成，不作为 canonical strategy。
+- `execution`：基于 canonical `targets.json` 的账户快照、调仓规划、审计与 LongPort 执行入口。
+
+项目利用`SQLite`进行数据管理，并通过`config/config.yaml`进行统一配置。所有核心操作都通过`stockq`命令行工具执行。
 
 ## 回测结果图
 
@@ -107,12 +111,36 @@ Last 5Y         17.97%   -16.22%      1.11      0.98    14.32%      0.31     8.3
 
 所有操作均通过`stockq`命令行工具完成。
 
+推荐按以下 workflow 使用：
+
+### Research（主线）
+
+- `stockq load-data`
+- `stockq preliminary`
+- `stockq backtest quant`
+- `stockq backtest pe`
+- `stockq backtest spy`
+
+### AI Lab（实验性）
+
+- `stockq ai-pick`
+- `stockq backtest ai`
+
+> `ai-pick` 属于实验性 workflow，适合做候选重排、解释生成和研究假设辅助，不应默认视为实盘 canonical signal。
+
+### Execution
+
+- `stockq targets gen --from preliminary`
+- `stockq targets gen --from ai`
+- `stockq lb-account --format json`
+- `stockq lb-rebalance outputs/targets/YYYY-MM-DD.json`
+
 常用辅助命令：
 
 - `stockq export`: 在 Excel 和分期 JSON 之间双向转换。
 - `stockq validate-exports`: 校验 Excel 与 JSON 的一致性。
 - `stockq lb-config`: 显示 LongPort 相关环境配置。
-- `stockq targets gen`: 从最新 AI 结果生成可编辑的 `targets.json`，推荐作为实盘起点。
+- `stockq targets gen`: 将 research 或 ai-lab 结果归一化为 canonical schema-v2 `targets.json`，推荐作为实盘起点。
 - `stockq rf info`: 查看/刷新无风险利率（FRED）缓存状态，供 Sharpe 计算复用。
 
 ### 配置环境
@@ -201,11 +229,11 @@ fractional_preview:
     stockq preliminary
     ```
 
-### 阶段二：AI 精选与回测
+### 阶段二：AI Lab（实验）与可选回测
 
 3. 步骤 3: 运行 AI 筛选策略
 
-    此脚本读取上一步生成的 Excel 文件，提交给`gemini-2.5-pro`进行分析，并将 AI 筛选的 10 只股票及其分析理由保存到新的 Excel 文件，同时输出对应的 JSON 文件。
+    此脚本读取上一步生成的候选结果，提交给`gemini-2.5-pro`进行实验性分析，并将 AI 选出的 10 只股票及其分析理由保存到新的 Excel 文件，同时输出对应的 JSON 文件。
 
     ```bash
     stockq ai-pick
@@ -260,9 +288,9 @@ fractional_preview:
     stockq rf info
     ```
 
-6. 运行 AI 筛选组合的回测
+6. 运行 AI 筛选组合的回测（实验性）
 
-    此脚本读取 AI 筛选的股票列表，使用`backtrader`引擎进行回测，并生成最终的累计收益图和性能指标。默认情况下，它会优先从 `outputs/ai_pick/` 和 `outputs/preliminary/` 目录中按日期读取 JSON 文件；若缺失则回退到对应的 Excel 文件。
+    此脚本读取 AI Lab 生成的股票列表，使用`backtrader`引擎进行回测，并生成累计收益图和性能指标。默认情况下，它会优先从 `outputs/ai_pick/` 和 `outputs/preliminary/` 目录中按日期读取 JSON 文件；若缺失则回退到对应的 Excel 文件。
 
     ```bash
     stockq backtest ai
@@ -270,7 +298,7 @@ fractional_preview:
 
 > 关于回测图表：默认在水下图中以填充展示策略回撤，同时叠加基准的表现。净值面板左上角/右上角会自动嵌入策略与基准的关键指标（TotRet、CAGR、MaxDD、Sharpe），方便对比。所有图表与文本输出开关都集中在 `config.yaml` 的 `report` 段，可切换 `report_mode`、启用/禁用滚动波动率与月度收益热力图、调整滚动窗口或是否对数坐标。
 
-### 阶段三：券商集成与实盘操作 (长桥)
+### 阶段三：Execution（长桥）
 
 5. 查看当下账户情况
 
@@ -294,47 +322,61 @@ fractional_preview:
     stockq lb-account --format json
    ```
 
-6. 生成可编辑的调仓目标（targets JSON）
+6. 生成 canonical 调仓目标（targets JSON）
 
-    为避免“回测产物 = 实盘目标”的耦合，推荐先从最新一期 AI 结果生成一份独立的 targets JSON（可手动修订）。
+    为避免“回测产物 = 实盘目标”的耦合，推荐先从最新一期 research 或 ai-lab 结果生成一份独立的 schema-v2 `targets.json`（可手动修订）。
 
     ```bash
-    # 生成 outputs/targets/{YYYY-MM-DD}.json（自动选取最新 AI JSON）
+    # 从最新 AI Lab JSON 生成 outputs/targets/{YYYY-MM-DD}.json
     stockq targets gen --from ai
+
+    # 从最新 research JSON 生成
+    stockq targets gen --from preliminary
 
     # 指定日期（按 outputs/ai_pick/YYYY/{asof}.json 匹配）
     stockq targets gen --from ai --asof 2025-09-05
 
-    # 或显式指定 Excel/日期/输出位置（Excel 兜底/兼容旧流程）
+    # 或显式指定旧版 Excel/日期/输出位置（迁移旧流程）
     stockq targets gen --from ai \
       --excel outputs/point_in_time_ai_stock_picks_all_sheets.xlsx \
       --asof 2025-09-05 \
       --out outputs/targets/2025-09-05.json
     ```
 
-    你可以手动编辑这份 JSON（增加/删除票、加权重/备注），AI 回测产物不会被污染。
+    你可以手动编辑这份 JSON（增加/删除票、修改权重、补充备注），上游 research / ai-lab 产物不会被污染。
+
+    schema-v2 `targets.json` 示例：
+
+    ```json
+    {
+      "schema_version": 2,
+      "asof": "2025-09-05",
+      "source": "research",
+      "target_gross_exposure": 1.0,
+      "targets": [
+        {"symbol": "AAPL", "market": "US", "target_weight": 0.5},
+        {"symbol": "MSFT", "market": "US", "target_weight": 0.5}
+      ]
+    }
+    ```
+
+    每个 target 必须显式携带 `symbol` 与 `market`，并且只能使用一种目标表达：`target_weight` 或 `target_quantity`。
 
 7. 使用 targets JSON 干跑预览 / 执行调仓
 
-    `lb-rebalance` 命令默认读取真实账户并生成调仓计划，但不下单；只有添加 `--execute` 时才会真实下单。输入文件支持 targets JSON（推荐）或 AI Excel（总表）。
+    `lb-rebalance` 命令默认读取真实账户并生成调仓计划，但不下单；只有添加 `--execute` 时才会真实下单。执行入口只接受 canonical schema-v2 `targets.json`。
 
     干跑预览（推荐先预览）:
 
     ```bash
     # 使用 targets JSON（推荐）
     stockq lb-rebalance outputs/targets/2025-07-02.json
-    
-    # 向后兼容：直接读取 AI Excel 最新期
-    stockq lb-rebalance outputs/point_in_time_ai_stock_picks_all_sheets.xlsx
     ```
 
     审查输出后，如需执行真实交易（谨慎）:
 
     ```bash
     stockq lb-rebalance outputs/targets/2025-09-05.json --execute
-    
-    # 或：AI Excel 最新期
-    stockq lb-rebalance outputs/point_in_time_ai_stock_picks_all_sheets.xlsx --execute
     ```
 
 ## 可选步骤
@@ -431,7 +473,13 @@ fractional_preview:
 
 ## 核心特性
 
-* 两阶段混合模型: 结合了基于财务报表数据的量化筛选和大型语言模型的深度分析，实现自动化、多维度的选股流程。
+* 三个逻辑边界:
+
+    * `research`: 数据准备、规则量化选股、组合快照与回测，是项目主线。
+
+    * `ai-lab`: AI 候选重排、解释生成与实验性回测，不作为默认实盘信号。
+
+    * `execution`: 账户快照、canonical targets、差分调仓、审计与券商执行。
 
 * 时点回测:
 
@@ -439,7 +487,7 @@ fractional_preview:
 
     * 杜绝未来数据: 使用财报的发布日期（Publish Date）作为判断信息是否可用的标准。
 
-* AI筛选:
+* AI Lab（实验性）:
 
     * 多API密钥池: 支持配置多个Gemini API密钥，通过轮换机制分摊请求压力，最大化吞吐量。
 
@@ -453,7 +501,9 @@ fractional_preview:
 
         * 分级错误处理: 系统能自动区分API Key认证失败（永久移除）、项目级限流（全局冷却）和临时性网络错误（单Key临时退避），确保在高并发请求下依然稳健运行。
 
-* 命令行工具: 通过`stockq`命令及其子命令（如`load-data`, `ai-pick`, `backtest`, `lb-rebalance`）执行所有核心工作流，实现流程自动化。
+* Canonical 调仓协议: execution 侧使用 market-aware 的 schema-v2 `targets.json`，将策略产物与实盘输入解耦。
+
+* 命令行工具: 通过`stockq`命令及其子命令（如`load-data`, `ai-pick`, `backtest`, `targets`, `lb-rebalance`）执行 research、ai-lab 与 execution 工作流。
 
 * Sharpe 比率自动化: 回测时自动读取/刷新 FRED 无风险利率缓存，输出 Sharpe Ratio 与所用序列，亦可通过 `stockq rf` 独立维护缓存。
 
@@ -461,17 +511,17 @@ fractional_preview:
 
 * 模块化与可测试的代码: 项目被重构为逻辑清晰的模块（如`backtest`, `utils`），并配备了`pytest`单元测试，保证了核心逻辑的正确性。
 
-* 券商集成 (长桥): 项目已集成LongPort OpenAPI，可通过命令行工具直接获取股票的实时报价，并根据`gemini-2.5-pro`策略结果生成并执行调仓交易指令。
+* 券商集成 (长桥): 项目已集成LongPort OpenAPI，可通过命令行工具直接获取股票的实时报价，并根据 canonical `targets.json` 生成并执行调仓交易指令。
 
 ## 核心策略流程
 
-本策略结合了量化筛选的广度和 AI 深度分析的优势，分为两个核心阶段：
+当前工作流以 `research` 主线为核心，并提供可选的 `ai-lab` 与 `execution` 路径：
 
 ### 阶段一：多因子量化初筛
 
 此阶段利用财务数据快速筛选出一个具备良好基本面特征的股票池。
 
-1. 多因子模型: 结合多个财务指标来综合评估公司质量。本策略使用的因子及其权重在 `src/stock_analysis/preliminary_selection.py` 的 `FACTOR_WEIGHTS` 中定义。
+1. 多因子模型: 结合多个财务指标来综合评估公司质量。本策略使用的因子及其权重在 `src/stock_analysis/research/selection/preliminary_selection.py` 的 `FACTOR_WEIGHTS` 中定义。
 
     * `cfo` (经营活动现金流): 正向因子，越高越好。
 
@@ -489,11 +539,11 @@ fractional_preview:
 
 3. 初步筛选: 在每个季度，选出滚动平均因子分排名前20的股票，作为 AI 分析的候选列表。
 
-### 阶段二：Gemini AI 精选与分析
+### 阶段二：Gemini AI Lab（实验性）
 
-此阶段利用大型语言模型对初选列表进行更深层次的定性与半定量分析。
+此阶段利用大型语言模型对初选列表进行更深层次的定性与半定量分析，作为实验性候选重排与解释生成路径。
 
-1. AI 分析框架: `ai_stock_pick.py` 脚本为每个季度的前20名候选股构建详细的提示，要求Gemini模型扮演价值投资者的角色，从基本面、投资逻辑、行业地位和催化因素四个维度进行分析。
+1. AI 分析框架: `src/stock_analysis/ai_lab/selection/ai_stock_pick.py` 为每个季度的前20名候选股构建详细提示，要求 Gemini 模型扮演价值投资者的角色，从基本面、投资逻辑、行业地位和催化因素四个维度进行分析。
 
     * 基本面分析: 审视营收、利润率和现金流的健康状况。
 
@@ -521,20 +571,20 @@ graph TD;
         D -->|生成| E(["初步候选池<br/>(JSON / Excel)"]);
     end
 
-    subgraph "阶段二：AI 精选"
+    subgraph "阶段二：AI Lab（实验）"
         E -->|作为输入| F{"stockq ai-pick"};
-        F -- "调用 Gemini API" --> G(["AI 精选组合<br/>(JSON / Excel)"]);
+        F -- "调用 Gemini API" --> G(["AI Lab 结果<br/>(JSON / Excel)"]);
     end
 
-    subgraph "阶段三：策略应用"
-        subgraph "路径 A：回测 (验证策略有效性)"
+    subgraph "阶段三：Execution"
+        subgraph "路径 A：实验性回测"
             G -->|用于回测| H{"stockq backtest ai"};
             H -->|生成| I[("回测报告 & 图表")];
         end
 
-        subgraph "路径 B：实盘 (执行交易)"
-            G -->|1. 生成可编辑目标| J{"stockq targets gen"};
-            J -->|2. 生成| K(["<strong>Targets.json</strong><br/>(可手动编辑/审核)"]);
+        subgraph "路径 B：调仓执行"
+            E -->|或 G 归一化| J{"stockq targets gen"};
+            J -->|1. 生成| K(["<strong>schema-v2 targets.json</strong><br/>(可手动编辑/审核)"]);
             K -->|3. 作为输入| L{"stockq lb-rebalance"};
             L -- "连接 LongPort API" --> M[("实盘交易")];
         end
@@ -568,38 +618,40 @@ graph TD;
 ├── src/
 │   └── stock_analysis/
 │       ├── __init__.py
-│       ├── ai_stock_pick.py      # AI选股与API管理核心逻辑
-│       ├── cli.py                  # 命令行接口定义
-│       ├── preliminary_selection.py  # 量化初筛逻辑
-│       ├── backtest/               # 回测引擎与数据准备
-│       │   ├── engine.py
-│       │   └── prep.py
-│       ├── broker/                 # 券商API客户端
-│       │   └── longport_client.py
-│       ├── commands/               # 命令处理层 (胶水代码)
+│       ├── cli.py                   # 命令行接口定义
+│       ├── commands/                # 统一 CLI 入口（胶水代码）
 │       │   ├── __init__.py
 │       │   ├── ai_pick.py
 │       │   ├── backtest.py
 │       │   ├── lb_account.py
 │       │   ├── risk_free.py
 │       │   └── ...
-│       ├── services/               # 业务逻辑层
-│       │   ├── marketdata/         # 市场数据服务（FRED 无风险利率等）
-│       │   │   └── risk_free.py
-│       │   ├── account_snapshot.py
-│       │   └── rebalancer.py
-│       ├── renderers/              # 输出渲染层
-│       │   ├── diff.py             # Rebalance前后对比渲染
-│       │   ├── jsonout.py
-│       │   └── table.py
-│       └── utils/                  # 通用工具 (配置、日志、路径)
-│           ├── config.py
-│           ├── logging.py
-│           └── paths.py
+│       ├── research/                # 主线研究域
+│       │   ├── backtest/            # 回测引擎、数据准备、研究策略
+│       │   ├── data/                # 数据装载
+│       │   └── selection/           # 规则选股
+│       ├── ai_lab/                  # 实验性 AI 工作流
+│       │   ├── backtest/
+│       │   └── selection/
+│       ├── execution/               # 执行平台
+│       │   ├── broker/              # Broker adapter
+│       │   ├── renderers/           # 调仓 diff / 执行渲染
+│       │   └── services/            # 账户快照 / 调仓规划 / 执行
+│       ├── contracts/               # 跨工作流共享协议
+│       │   ├── portfolio_json.py
+│       │   └── targets.py
+│       ├── services/                # 兼容层 + 通用服务（marketdata 等）
+│       │   └── marketdata/
+│       ├── backtest/                # 向后兼容导入壳
+│       ├── broker/                  # 向后兼容导入壳
+│       ├── renderers/               # 通用渲染 + 兼容壳
+│       └── utils/                   # 通用工具（路径、FX 等）与兼容壳
 ├── .env
 ├── pyproject.toml
 └── README.md
 ```
+
+> 说明：`research / ai_lab / execution / contracts` 现在是实际实现所在目录；旧的 `backtest / broker / services / utils` 路径保留为兼容层，方便现有脚本和测试逐步迁移。
 
 ## 数据源
 
@@ -863,4 +915,3 @@ tests/
 | ------------ | --------------------------------------------------------------------------------------------------------------------- |
 | LongPort API | `LONGPORT_APP_KEY`, `LONGPORT_APP_SECRET`, `LONGPORT_ACCESS_TOKEN`, `LONGPORT_REGION`（默认 `hk`，内地账户设为 `cn`） |
 | Gemini AI    | `GEMINI_API_KEY`, `GEMINI_API_KEY_2`, `GEMINI_API_KEY_3`                                                              |
-

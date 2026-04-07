@@ -1,123 +1,14 @@
-"""Portfolio JSON utilities.
-
-Helpers to locate and read per-date JSON outputs for AI picks and
-preliminary selections. Selection is based on the date encoded in the
-filename (not modification time).
-"""
+"""Compatibility alias for canonical portfolio JSON helpers."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterable, Optional, Tuple
+import sys
 
-import json
-import re
+from .._compat import warn_legacy_import
+from ..contracts import portfolio_json as _impl
 
-import pandas as pd
-
-from ..logging import get_logger
-from .paths import AI_PORTFOLIO_JSON_DIR
-
-logger = get_logger(__name__)
-
-
-_DATE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})$")
-
-
-def _iter_json_files(root: Path) -> Iterable[Path]:
-    """Yield JSON files one level below year folders under root.
-
-    Expected layout: root/YYYY/YYYY-MM-DD.json
-    """
-    if not root.exists():
-        return []
-    for year_dir in sorted(root.iterdir()):
-        if not year_dir.is_dir() or not year_dir.name.isdigit():
-            continue
-        for fp in year_dir.glob("*.json"):
-            if fp.is_file():
-                yield fp
-
-
-def _parse_date_from_filename(fp: Path) -> Optional[pd.Timestamp]:
-    name = fp.stem  # e.g., 2025-09-05
-    m = _DATE_RE.match(name)
-    if not m:
-        return None
-    try:
-        return pd.to_datetime(m.group(1))
-    except Exception:
-        return None
-
-
-def pick_latest_ai_json(root: Path | None = None) -> Optional[Path]:
-    """Pick the latest AI pick JSON by filename date, not mtime.
-
-    Args:
-        root: Root directory containing per-year folders; defaults to
-              `AI_PORTFOLIO_JSON_DIR`.
-
-    Returns:
-        Path to the latest JSON file, or None if nothing found.
-    """
-    base = root or AI_PORTFOLIO_JSON_DIR
-    candidates: list[tuple[pd.Timestamp, Path]] = []
-    for fp in _iter_json_files(base):
-        ts = _parse_date_from_filename(fp)
-        if ts is not None:
-            candidates.append((ts, fp))
-
-    if not candidates:
-        return None
-
-    candidates.sort(key=lambda x: x[0])
-    return candidates[-1][1]
-
-
-@dataclass
-class AIPicks:
-    tickers: list[str]
-    asof: str
-
-
-def read_ai_json_tickers(fp: Path) -> AIPicks:
-    """Read AI pick JSON and return tickers and asof date.
-
-    Expects schema with `picks: [{ticker, ...}, ...]` and `trade_date`.
-    Falls back to file name for `asof`.
-    """
-    if not fp.exists():
-        raise FileNotFoundError(f"文件不存在: {fp}")
-
-    raw = json.loads(fp.read_text(encoding="utf-8"))
-    picks = raw.get("picks") or []
-    tickers = [str(x.get("ticker", "")).upper().strip() for x in picks if x]
-    tickers = [t for t in tickers if t]
-    asof = str(raw.get("trade_date") or fp.stem)
-    if not tickers:
-        raise ValueError(f"JSON中未找到有效的picks：{fp}")
-    return AIPicks(tickers=tickers, asof=asof)
-
-
-def find_ai_json_for_date(asof: str, root: Path | None = None) -> Optional[Path]:
-    """Find the AI pick JSON for a given date (YYYY-MM-DD) by filename.
-
-    Searches year subfolder first, then all files under root for a name match.
-    """
-    base = root or AI_PORTFOLIO_JSON_DIR
-    # Try exact expected path
-    try:
-        y = asof[:4]
-    except Exception:
-        y = ""
-    if y.isdigit():
-        candidate = base / y / f"{asof}.json"
-        if candidate.exists():
-            return candidate
-
-    # Fallback: scan all files
-    for fp in _iter_json_files(base):
-        if fp.stem == asof:
-            return fp
-    return None
+warn_legacy_import(
+    "stock_analysis.utils.portfolio_json",
+    "stock_analysis.contracts.portfolio_json",
+)
+sys.modules[__name__] = _impl

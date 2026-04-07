@@ -1,4 +1,2 @@
-"""Backtesting Module
+"""Compatibility package for legacy backtest imports."""
 
-Provides backtesting engine and data preparation functionality.
-"""

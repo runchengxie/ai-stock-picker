@@ -71,3 +71,13 @@ source = ["src/stock_analysis"]
 
 [tool.coverage.report]
 show_missing = true
+
+[tool.pytest.ini_options]
+markers = [
+  "unit: fast, isolated tests",
+  "integration: tests that touch external APIs or DB",
+  "e2e: end-to-end workflow tests",
+  "slow: long-running tests",
+  "requires_api: needs external API access",
+  "requires_db: needs database access",
+]

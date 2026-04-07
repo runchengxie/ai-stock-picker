@@ -25,6 +25,12 @@ _DEFAULT_PADDING_DAYS = 7
 _TRADING_DAYS_PER_YEAR = 252
 
 
+def _utc_now() -> dt.datetime:
+    """Return a timezone-aware UTC timestamp."""
+
+    return dt.datetime.now(dt.UTC)
+
+
 class RiskFreeRateServiceError(RuntimeError):
     """Base exception for risk-free service errors."""
 
@@ -302,9 +308,9 @@ class RiskFreeRateService:
             "SELECT last_updated FROM risk_free_updates WHERE series=?",
             (series,),
         ).fetchone()
-        last_updated = (
-            dt.datetime.fromisoformat(meta[0]) if meta and meta[0] else None
-        )
+        last_updated = dt.datetime.fromisoformat(meta[0]) if meta and meta[0] else None
+        if last_updated is not None and last_updated.tzinfo is None:
+            last_updated = last_updated.replace(tzinfo=dt.UTC)
         return RiskFreeCacheInfo(series, start_date, end_date, rows, last_updated)
 
     def _needs_refresh(
@@ -321,7 +327,7 @@ class RiskFreeRateService:
             return False
         if info.last_updated is None:
             return True
-        age = dt.datetime.utcnow() - info.last_updated
+        age = _utc_now() - info.last_updated
         return age > dt.timedelta(days=self.ttl_days)
 
     def _refresh_range(
@@ -342,7 +348,7 @@ class RiskFreeRateService:
         conn.execute(
             "INSERT INTO risk_free_updates(series, last_updated) VALUES(?, ?) "
             "ON CONFLICT(series) DO UPDATE SET last_updated=excluded.last_updated",
-            (series, dt.datetime.utcnow().isoformat()),
+            (series, _utc_now().isoformat()),
         )
         conn.commit()
 

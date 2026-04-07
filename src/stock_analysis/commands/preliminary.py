@@ -28,7 +28,7 @@ def run_preliminary(
             logger.info(f"输出目录：{output_dir}")
             # Output directory configuration logic can be added here
 
-        from ..preliminary_selection import main as prelim_main
+        from ..research.selection.preliminary_selection import main as prelim_main
 
         export_excel = not no_excel
         export_json = not no_json

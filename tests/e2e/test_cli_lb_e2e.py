@@ -36,6 +36,21 @@ def test_cli_lb_rebalance_help():
     assert result.returncode == 0, f"Help command failed: {result.stderr}"
     assert "lb-rebalance" in result.stdout.lower()
     assert "input" in result.stdout.lower() or "文件" in result.stdout
+    assert "json" in result.stdout.lower()
+
+
+@pytest.mark.e2e
+def test_cli_ai_pick_help_mentions_experimental():
+    """Tests that the experimental AI workflow is labeled in help output."""
+    result = subprocess.run(
+        [sys.executable, "-m", "stock_analysis.cli", "ai-pick", "--help"],
+        capture_output=True,
+        text=True,
+        cwd=Path.cwd(),
+    )
+
+    assert result.returncode == 0, f"Help command failed: {result.stderr}"
+    assert "experimental" in result.stdout.lower() or "实验" in result.stdout
 
 
 @pytest.mark.e2e
@@ -51,6 +66,8 @@ def test_cli_main_help():
     assert result.returncode == 0, f"Main help command failed: {result.stderr}"
     assert "lb-quote" in result.stdout
     assert "lb-rebalance" in result.stdout
+    assert "research" in result.stdout.lower()
+    assert "ai-lab" in result.stdout.lower()
 
 
 @pytest.mark.e2e
@@ -129,6 +146,24 @@ def test_cli_lb_rebalance_file_not_found():
         or "不存在" in result.stderr
         or "找不到" in result.stderr
     )
+
+
+@pytest.mark.e2e
+def test_cli_lb_rebalance_rejects_legacy_workbook(tmp_path: Path):
+    """Tests that rebalance execution requires canonical target JSON."""
+    legacy_file = tmp_path / "legacy.xlsx"
+    legacy_file.write_text("legacy workbook placeholder", encoding="utf-8")
+
+    result = subprocess.run(
+        [sys.executable, "-m", "stock_analysis.cli", "lb-rebalance", str(legacy_file)],
+        capture_output=True,
+        text=True,
+        cwd=Path.cwd(),
+    )
+
+    assert result.returncode != 0
+    assert "deprecated" in result.stderr.lower()
+    assert "targets gen" in result.stderr
 
 
 @pytest.mark.e2e

@@ -56,7 +56,7 @@ def test_ensure_range_populates_cache(tmp_path, monkeypatch):
 
     info = service.ensure_range(dt.date(2024, 1, 1), dt.date(2024, 1, 2))
 
-    assert calls == [("TEST", dt.date(2023, 12, 25), dt.date(2024, 1, 9))]
+    assert calls == [("TEST", dt.date(2024, 1, 1), dt.date(2024, 1, 2))]
     assert info.series == "TEST"
     assert info.rows == 2
     assert info.start_date == dt.date(2024, 1, 1)
@@ -97,7 +97,7 @@ def test_ensure_range_respects_ttl(tmp_path, monkeypatch):
     with service._connect() as conn:  # type: ignore[attr-defined]
         conn.execute(
             "UPDATE risk_free_updates SET last_updated=? WHERE series=?",
-            ((dt.datetime.utcnow() - dt.timedelta(days=5)).isoformat(), "TEST"),
+            ((dt.datetime.now(dt.UTC) - dt.timedelta(days=5)).isoformat(), "TEST"),
         )
         conn.commit()
 
@@ -125,10 +125,10 @@ def test_get_series_for_index_aligns_with_cache(tmp_path, monkeypatch):
     series = service.get_series_for_index(index)
 
     assert list(series.index) == list(index)
-    # First two values from explicit observations, remaining forward-filled
+    # First value is explicit, middle gaps are forward-filled, final value is explicit.
     assert series.iloc[0] == pytest.approx(0.001)
     assert series.iloc[1] == pytest.approx(0.001)
-    assert series.iloc[2] == pytest.approx(0.002)
+    assert series.iloc[2] == pytest.approx(0.001)
     assert series.iloc[3] == pytest.approx(0.002)
 
 
@@ -191,7 +191,7 @@ def test_compute_sharpe_uses_cached_series(tmp_path):
         )
         conn.execute(
             "INSERT OR REPLACE INTO risk_free_updates(series, last_updated) VALUES(?, ?)",
-            ("TEST", dt.datetime.utcnow().isoformat()),
+            ("TEST", dt.datetime.now(dt.UTC).isoformat()),
         )
         conn.commit()
 

@@ -45,19 +45,21 @@ def run_backtest(
         lvl = _parse_log_level(log_level)
 
         if strategy == "ai":
-            from ..backtest.strategies.quarterly_ai_pick import main as ai_main
+            from ..ai_lab.backtest.quarterly_ai_pick import main as ai_main
 
             ai_main(log_level=lvl)
         elif strategy == "quant":
-            from ..backtest.strategies.quarterly_unpicked import main as quant_main
+            from ..research.backtest.strategies.quarterly_unpicked import (
+                main as quant_main,
+            )
 
             quant_main(log_level=lvl)
         elif strategy == "spy":
-            from ..backtest.strategies.benchmark_spy import main as spy_main
+            from ..research.backtest.strategies.benchmark_spy import main as spy_main
 
             spy_main(target_percent=target_percent, log_level=lvl)
         elif strategy == "pe":
-            from ..backtest.strategies.pe_sector_alpha import main as pe_main
+            from ..research.backtest.strategies.pe_sector_alpha import main as pe_main
 
             pe_main()
 

@@ -44,26 +44,26 @@ def create_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="stockq",
         description=(
-            "Stock Quantitative Analysis Tool - 基于财务基本面的AI选股与回测系统"
+            "Stock Quantitative Analysis Tool - 以 research 主线、ai-lab 实验流和 "
+            "execution 平台边界组织的量化研究与调仓工具"
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例用法:
-  stockq --help                    显示帮助信息
-  stockq preliminary               运行量化初筛选股
-  stockq backtest ai               运行AI选股回测
-  stockq backtest quant            运行量化初选回测
-  stockq backtest pe               运行PE估值因子回测
-  stockq backtest spy              运行SPY基准回测
-  stockq load-data                 加载数据到数据库
-  stockq ai-pick                   运行AI选股分析
-  stockq lb-quote AAPL MSFT        获取实时报价
-  stockq lb-account                查看真实账户总览
-  stockq lb-account --funds        只显示资金信息
-  stockq lb-account --format json  JSON格式输出
-  stockq lb-rebalance results.xlsx             真实账户干跑预览 (Dry-Run)
-  stockq lb-rebalance results.xlsx --execute   谨慎执行真实调仓
-  stockq targets gen --from ai                 从最新AI选股生成可编辑的调仓目标 JSON
+  [research]
+  stockq load-data
+  stockq preliminary
+  stockq backtest quant
+
+  [ai-lab / experimental]
+  stockq ai-pick
+  stockq backtest ai
+
+  [execution]
+  stockq targets gen --from ai
+  stockq lb-account --format json
+  stockq lb-rebalance outputs/targets/2025-09-05.json
+  stockq lb-rebalance outputs/targets/2025-09-05.json --execute
         """,
     )
 
@@ -83,7 +83,7 @@ def create_parser() -> argparse.ArgumentParser:
     backtest_parser.add_argument(
         "strategy",
         choices=["ai", "quant", "pe", "spy"],
-        help="回测策略类型：ai(AI选股), quant(量化初选), pe(PE估值因子), spy(SPY基准)",
+        help="回测策略类型：ai(实验性AI选股), quant(主线量化初选), pe(PE估值因子), spy(SPY基准)",
     )
     backtest_parser.add_argument("--config", type=str, help="配置文件路径（可选）")
     backtest_parser.add_argument(
@@ -152,7 +152,9 @@ def create_parser() -> argparse.ArgumentParser:
 
     # AI stock picking command
     ai_parser = subparsers.add_parser(
-        "ai-pick", help="运行AI选股分析", description="使用AI模型进行股票筛选和分析"
+        "ai-pick",
+        help="运行实验性AI选股分析",
+        description="使用AI模型进行实验性股票筛选和分析（ai-lab workflow）",
     )
     ai_parser.add_argument(
         "--quarter", type=str, help="指定季度（格式：YYYY-QX，如2024-Q1）"
@@ -293,15 +295,14 @@ def create_parser() -> argparse.ArgumentParser:
         "lb-rebalance",
         help="根据目标组合调整仓位",
         description=(
-            "读取调仓目标（targets JSON 或 AI Excel），生成仓位调整订单（默认干跑模式）"
+            "读取 canonical schema-v2 targets JSON，生成仓位调整订单（默认干跑模式）"
         ),
     )
     lb_rebalance_parser.add_argument(
         "input_file",
         type=str,
         help=(
-            "目标输入文件：可为 targets JSON（推荐，如 outputs/targets/2025-09-05.json）"  # noqa: E501
-            "或 AI Excel（如 outputs/point_in_time_ai_stock_picks_all_sheets.xlsx）"
+            "目标输入文件：canonical targets JSON（如 outputs/targets/2025-09-05.json）"
         ),
     )
     lb_rebalance_parser.add_argument(
@@ -320,7 +321,7 @@ def create_parser() -> argparse.ArgumentParser:
         "--target-gross-exposure",
         type=float,
         default=1.0,
-        help="目标总敞口比例（0-1，默认1.0表示用现金+基金+股票总资产进行等额分配）",
+        help="目标总敞口比例覆盖值（当 targets.json 未显式给出时使用，默认 1.0）",
     )
 
     # No longer expose env, default to real; --execute controls actual order execution
@@ -358,7 +359,7 @@ def create_parser() -> argparse.ArgumentParser:
         "targets",
         help="生成与管理实盘调仓目标（targets JSON）",
         description=(
-            "将最新一期AI/初筛结果平移为独立的调仓目标JSON，便于人工修订与留痕"
+            "将 research 或 ai-lab 结果归一化为 canonical schema-v2 调仓目标 JSON"
         ),
     )
     targets_sub = targets_parser.add_subparsers(dest="targets_cmd", metavar="SUB")
@@ -366,8 +367,8 @@ def create_parser() -> argparse.ArgumentParser:
         "gen",
         help="从AI/初筛结果生成targets JSON",
         description=(
-            "默认读取最新AI JSON（按文件名日期选取），输出到 outputs/targets/{asof}.json，可手动编辑；"  # noqa: E501
-            "如显式提供 --excel 则改为从该Excel的最新/指定sheet生成"
+            "默认优先读取最新 research/ai-lab JSON 结果并归一化为 schema-v2 targets；"  # noqa: E501
+            "如显式提供 --excel 则从旧版 Excel 结果迁移生成"
         ),
     )
     t_gen.add_argument(
@@ -375,7 +376,7 @@ def create_parser() -> argparse.ArgumentParser:
         dest="source",
         choices=["ai", "preliminary"],
         default="ai",
-        help="来源：ai 或 preliminary（默认：ai）",
+        help="来源：ai(实验性 ai-lab) 或 preliminary(research)（默认：ai）",
     )
     t_gen.add_argument(
         "--excel",

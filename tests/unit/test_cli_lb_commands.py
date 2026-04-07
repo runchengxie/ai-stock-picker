@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 
 import logging
 import sys
+from pathlib import Path
 
 import pytest
 import stock_analysis.cli as cli
@@ -158,6 +159,20 @@ def test_run_lb_rebalance_file_not_found(capsys):
     assert result == 1
     err = capsys.readouterr().err
     assert "File not found" in err
+
+
+@pytest.mark.unit
+def test_run_lb_rebalance_rejects_legacy_workbook(tmp_path: Path, caplog):
+    """Test that execution rejects legacy workbook inputs with a migration hint."""
+    legacy_file = tmp_path / "legacy.xlsx"
+    legacy_file.write_text("legacy workbook placeholder", encoding="utf-8")
+
+    with caplog.at_level(logging.ERROR):
+        result = cli.run_lb_rebalance(str(legacy_file))
+
+    assert result == 1
+    assert "deprecated" in caplog.text.lower()
+    assert "stockq targets gen" in caplog.text
 
 
 @pytest.mark.unit

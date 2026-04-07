@@ -350,7 +350,7 @@ class TestMainFunctionBranches:
             # Verify fallback to pandas chunks
             mock_chunks.assert_called()
 
-    def test_main_missing_files_handling(self, tmp_path, capsys):
+    def test_main_missing_files_handling(self, tmp_path, caplog):
         """Tests handling of missing files."""
         db_path = tmp_path / "test.db"
 
@@ -365,9 +365,8 @@ class TestMainFunctionBranches:
 
             main()
 
-            # Verify that a warning message is printed
-            captured = capsys.readouterr()
-            assert "[WARNING] File not found" in captured.out
+            assert "Financials source missing" in caplog.text
+            assert "Price data file not found" in caplog.text
 
 
 @pytest.mark.unit

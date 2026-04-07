@@ -36,7 +36,7 @@ def run_load_data(
             logger.info(f"使用指定数据目录：{data_dir}")
             # Path configuration logic can be added here
 
-        from ..services.data.load_data_to_db import main as load_main
+        from ..research.data.load_data_to_db import main as load_main
 
         # Parse optional tickers whitelist
         wl: set[str] | None = None

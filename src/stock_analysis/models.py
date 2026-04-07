@@ -104,6 +104,9 @@ class RebalanceResult:
     dry_run: bool = True
     env: str = "test"
     sheet_name: str = ""
+    target_source: str | None = None
+    target_asof: str | None = None
+    target_input_path: str | None = None
 
     @property
     def order_count(self) -> int:

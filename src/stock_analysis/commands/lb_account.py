@@ -4,9 +4,9 @@ Handles command logic for account information queries while delegating
 presentation to the CLI layer so that logging remains consistent.
 """
 
-from ..renderers.jsonout import render_multiple_account_snapshots_json
-from ..renderers.table import render_multiple_account_snapshots
-from ..services.account_snapshot import get_account_snapshot
+from ..execution.renderers.jsonout import render_multiple_account_snapshots_json
+from ..execution.renderers.table import render_multiple_account_snapshots
+from ..execution.services.account_snapshot import get_account_snapshot
 from ..logging import get_logger
 from .result import CommandResult
 
@@ -31,7 +31,7 @@ def run_lb_account(
     try:
         # Explicitly validate LongPort dependency early so tests can patch
         # import behavior without triggering SDK initialization.
-        __import__("stock_analysis.broker.longport_client")
+        __import__("stock_analysis.execution.broker.longport_client")
         # Resolve conflicting flags: funds take precedence over positions
         if only_funds and only_positions:
             only_positions = False

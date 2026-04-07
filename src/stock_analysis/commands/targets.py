@@ -12,17 +12,23 @@ from typing import Tuple
 import pandas as pd
 
 from ..logging import get_logger
-from ..utils.paths import AI_PORTFOLIO_FILE, OUTPUTS_DIR, AI_PORTFOLIO_JSON_DIR
-from ..utils.targets import write_targets_json
+from ..utils.paths import (
+    AI_PORTFOLIO_FILE,
+    AI_PORTFOLIO_JSON_DIR,
+    OUTPUTS_DIR,
+    QUANT_PORTFOLIO_FILE,
+    QUANT_PORTFOLIO_JSON_DIR,
+)
+from ..contracts.targets import write_targets_json
 from ..io.excel import (
     get_sheet_names,
     pick_latest_sheet,
     read_excel_data,
 )
-from ..utils.portfolio_json import (
-    pick_latest_ai_json,
-    read_ai_json_tickers,
-    find_ai_json_for_date,
+from ..contracts.portfolio_json import (
+    find_result_json_for_date,
+    pick_latest_result_json,
+    read_result_json_tickers,
 )
 
 logger = get_logger(__name__)
@@ -48,66 +54,71 @@ def _latest_sheet_and_tickers(xlsx: Path) -> Tuple[str, list[str]]:
     return sheet, tickers
 
 
+def _source_defaults(source: str) -> tuple[Path, Path, str, str]:
+    if source == "preliminary":
+        return (
+            QUANT_PORTFOLIO_FILE,
+            QUANT_PORTFOLIO_JSON_DIR,
+            "research",
+            "初筛",
+        )
+    return AI_PORTFOLIO_FILE, AI_PORTFOLIO_JSON_DIR, "ai_lab", "AI Lab"
+
+
 def run_targets_gen(
     source: str = "ai",
     excel: str | None = None,
     out: str | None = None,
     asof: str | None = None,
 ) -> int:
-    """Generate a targets JSON from latest (or specified) AI/prelim result.
-
-    Default behavior (source=ai):
-    - Prefer per-date AI JSON under outputs/ai_pick by filename date.
-      If `asof` is provided, pick that date's JSON; otherwise pick the latest.
-    - If `excel` is explicitly provided, fall back to reading the Excel sheet.
-
-    Args:
-        source: "ai" or "preliminary" (currently only used for semantics; default is ai)
-        excel: Optional Excel path override (forces Excel workflow)
-        out: Output JSON path; defaults to outputs/targets/{asof}.json
-        asof: Optional date (YYYY-MM-DD). Defaults to date from latest JSON filename.
-    """
+    """Generate canonical schema-v2 targets from AI/research artifacts."""
     try:
-        # 1) JSON-first for AI picks
-        if source == "ai" and excel is None:
-            # Find file by asof or pick latest
+        default_excel, json_root, target_source, source_label = _source_defaults(source)
+
+        # 1) JSON-first normalization path for both AI and research outputs
+        if excel is None:
             json_fp: Path | None
             if asof:
-                json_fp = find_ai_json_for_date(asof, AI_PORTFOLIO_JSON_DIR)
+                json_fp = find_result_json_for_date(asof, json_root)
                 if not json_fp:
-                    logger.error(
-                        f"未找到指定日期的AI JSON: {AI_PORTFOLIO_JSON_DIR}/**/{asof}.json"
-                    )
-                    return 1
+                    json_fp = None
             else:
-                json_fp = pick_latest_ai_json(AI_PORTFOLIO_JSON_DIR)
-                if not json_fp:
-                    logger.error(
-                        f"未找到AI JSON文件，请先运行 ai-pick 或 export excel-to-json 生成。根目录: {AI_PORTFOLIO_JSON_DIR}"
-                    )
+                json_fp = pick_latest_result_json(json_root)
+
+            if json_fp:
+                data = read_result_json_tickers(json_fp)
+                tickers = data.tickers
+                asof_date = data.asof
+
+                if not tickers:
+                    logger.error("未找到有效的股票代码")
                     return 1
 
-            ai = read_ai_json_tickers(json_fp)
-            tickers = ai.tickers
-            asof_date = ai.asof
+                out_path = (
+                    Path(out) if out else (OUTPUTS_DIR / "targets" / f"{asof_date}.json")
+                )
+                write_targets_json(
+                    out_path,
+                    tickers=tickers,
+                    asof=asof_date,
+                    source=target_source,
+                )
+                logger.info(
+                    "已生成 schema v2 调仓目标: %s JSON -> %s（%d 只）",
+                    source_label,
+                    out_path,
+                    len(tickers),
+                )
+                return 0
 
-            if not tickers:
-                logger.error("未找到有效的股票代码")
-                return 1
-
-            out_path = Path(out) if out else (OUTPUTS_DIR / "targets" / f"{asof_date}.json")
-            write_targets_json(
-                out_path, tickers=tickers, asof=asof_date, source="ai_pick"
-            )
-            logger.info(
-                f"已从AI JSON生成调仓目标: {json_fp.name} -> {out_path}（{len(tickers)} 只）"
-            )
-            return 0
-
-        # 2) Excel fallback (explicit) or for preliminary flow
-        xlsx = Path(excel) if excel else AI_PORTFOLIO_FILE
+        # 2) Excel fallback (explicit or migration path when JSON is absent)
+        xlsx = Path(excel) if excel else default_excel
         if not xlsx.exists():
-            logger.error(f"文件不存在: {xlsx}")
+            logger.error(
+                "%s 结果文件不存在: %s。请先生成 JSON/Excel 结果后再运行 targets gen。",
+                source_label,
+                xlsx,
+            )
             return 1
 
         if asof:
@@ -126,9 +137,9 @@ def run_targets_gen(
             out_path,
             tickers=tickers,
             asof=sheet,
-            source=("ai_pick" if source == "ai" else source),
+            source=target_source,
         )
-        logger.info(f"已生成调仓目标 JSON: {out_path}")
+        logger.info("已从 %s Excel 归一化 schema v2 调仓目标: %s", source_label, out_path)
         return 0
     except Exception as e:
         logger.error(f"生成调仓目标失败：{e}")

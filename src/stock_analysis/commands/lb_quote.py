@@ -3,8 +3,8 @@
 Handles command logic for stock quote queries.
 """
 
-from ..renderers.table import render_quotes
-from ..services.account_snapshot import get_quotes
+from ..execution.renderers.table import render_quotes
+from ..execution.services.account_snapshot import get_quotes
 from ..logging import get_logger
 from .result import CommandResult
 
@@ -23,7 +23,7 @@ def run_lb_quote(tickers: list[str]) -> CommandResult:
     """
     try:
         # Validate LongPort dependency early so tests can patch import
-        __import__("stock_analysis.broker.longport_client")
+        __import__("stock_analysis.execution.broker.longport_client")
 
         logger.info(f"正在获取 {', '.join(tickers)} 的实时报价... (REAL)")
 
