@@ -41,6 +41,7 @@ strategy_full_project_source.txt
 
 # Codex CLI
 # AGENTS.md
+.codex/
 
 # Environment variables
 .env
