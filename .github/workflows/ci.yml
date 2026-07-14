@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --locked --group dev
+
+      - name: Ruff
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+
+      - name: Mypy
+        run: uv run mypy
+
+      - name: Tests and 75% branch coverage gate
+        run: uv run pytest
+
+      - name: Build wheel and source distribution
+        run: uv run python -m build
+
+      - name: Smoke-test installed wheel outside checkout
+        shell: bash
+        run: |
+          uv venv --python "${{ matrix.python-version }}" "$RUNNER_TEMP/wheel-venv"
+          uv pip install --python "$RUNNER_TEMP/wheel-venv/bin/python" dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/wheel-venv/bin/aipick" --help
+          "$RUNNER_TEMP/wheel-venv/bin/aipick" cn pick \
+            --candidates "$GITHUB_WORKSPACE/examples/cn_candidates.json" \
+            --output "$RUNNER_TEMP/cn-picks.json" \
+            --as-of 2026-06-30 --top-n 1 --dry-run
+          "$RUNNER_TEMP/wheel-venv/bin/aipick" us pick \
+            --candidates "$GITHUB_WORKSPACE/examples/us_candidates.json" \
+            --output "$RUNNER_TEMP/us-picks.json" \
+            --as-of 2026-07-15 --top-n 1 --dry-run

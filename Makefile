@@ -1,16 +1,24 @@
-.PHONY: test test-all test-int test-e2e coverage
+.PHONY: check lock lint format type test maintainability build
 
-test: ## Unit tests
-	pytest
+check: lock lint format type test maintainability build ## Run every release gate
 
-test-all: ## Run all tests
-	pytest -m "unit or integration or e2e"
+lock: ## Verify dependency lock freshness
+	uv lock --check
 
-test-int: ## Integration tests
-	pytest -m "integration" -q
+lint: ## Run Ruff lint checks
+	uv run ruff check .
 
-test-e2e: ## End-to-end tests
-	pytest -m "e2e" -q
+format: ## Verify Ruff formatting
+	uv run ruff format --check .
 
-coverage: ## Coverage report
-	pytest --cov=stock_analysis --cov-report=term-missing
+type: ## Run strict static typing
+	uv run mypy
+
+test: ## Run the default suite and 75% branch coverage gate
+	uv run pytest
+
+maintainability: ## Enforce maintainability ratchet
+	uv run python scripts/dev/maintainability_metrics.py --ratchet
+
+build: ## Build wheel and source distribution
+	uv run python -m build

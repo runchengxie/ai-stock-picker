@@ -1,15 +1,15 @@
 import importlib.util
-import json
 import subprocess
 import sys
 from pathlib import Path
+from types import ModuleType
 
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
-def _load_metrics_module():
+def _load_metrics_module() -> ModuleType:
     path = _repo_root() / "scripts" / "dev" / "maintainability_metrics.py"
     spec = importlib.util.spec_from_file_location("maintainability_metrics", path)
     assert spec is not None
@@ -20,7 +20,7 @@ def _load_metrics_module():
     return module
 
 
-def test_maintainability_ratchet_matches_current_baseline():
+def test_maintainability_ratchet_matches_current_baseline() -> None:
     module = _load_metrics_module()
     metrics = module.collect_metrics(_repo_root(), limit=3)
     ratchet_budget_actuals = {
@@ -33,7 +33,7 @@ def test_maintainability_ratchet_matches_current_baseline():
     assert module.check_ratchet_budgets(metrics) == {}
 
 
-def test_maintainability_metrics_ratchet_flag_passes():
+def test_maintainability_metrics_ratchet_flag_passes() -> None:
     repo_root = _repo_root()
     result = subprocess.run(
         ["python", "scripts/dev/maintainability_metrics.py", "--ratchet"],

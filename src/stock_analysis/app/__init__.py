@@ -1,1 +1,1 @@
-"""Application entrypoints and command handlers."""
+"""Command-line application package."""
