@@ -17,6 +17,11 @@ from collections.abc import Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+try:
+    import tomllib
+except ModuleNotFoundError:  # pragma: no cover - exercised by the Python 3.10 CI job
+    import tomli as tomllib
+
 # ── Per-project configuration ────────────────────────────────────────────────
 # Override these after importing or edit in-place per project.
 
@@ -165,8 +170,6 @@ def _c901_file_ignore_count(repo_root: Path) -> int:
     pyproject = repo_root / "pyproject.toml"
     if not pyproject.exists():
         return 0
-    import tomllib
-
     config = tomllib.loads(pyproject.read_text(encoding="utf-8"))
     per_file = (
         config.get("tool", {})
