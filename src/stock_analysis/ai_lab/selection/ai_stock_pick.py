@@ -62,6 +62,7 @@ def _warning(message: str, **context: Any) -> None:
 def _error(message: str, **context: Any) -> None:
     _log("error", message, **context)
 
+
 # Version tag for prompt/content format
 PROMPT_VERSION = get_ai_prompt_version()
 
@@ -289,9 +290,7 @@ class KeyPool:
         slot.circuit.record_failure()
         slot.next_ok_at = time.time() + random.uniform(5, 15)
         slot.in_use = False
-        _warning(
-            "API key entering backoff state", key=slot.name, cooldown="5-15s"
-        )
+        _warning("API key entering backoff state", key=slot.name, cooldown="5-15s")
 
 
 # --- API Call Function Using Key Pool ---

@@ -86,7 +86,9 @@ def load_cfg() -> dict[str, Any]:
             config = yaml.safe_load(f) or {}
         return config
     except Exception as e:
-        logger.warning("Failed to load config.yaml: %s. Using default configuration.", e)
+        logger.warning(
+            "Failed to load config.yaml: %s. Using default configuration.", e
+        )
         return {
             "backtest": {
                 "period_mode": "dynamic",
@@ -133,9 +135,7 @@ def get_preliminary_factor_weights() -> dict[str, float]:
     config = load_cfg()
     selection_cfg = config.get("selection", {}) if isinstance(config, dict) else {}
     prelim_cfg = (
-        selection_cfg.get("preliminary", {})
-        if isinstance(selection_cfg, dict)
-        else {}
+        selection_cfg.get("preliminary", {}) if isinstance(selection_cfg, dict) else {}
     )
     weights_cfg = (
         prelim_cfg.get("factor_weights") if isinstance(prelim_cfg, dict) else None
@@ -164,12 +164,8 @@ def get_ai_prompt_version() -> str:
 
     config = load_cfg()
     selection_cfg = config.get("selection", {}) if isinstance(config, dict) else {}
-    ai_cfg = (
-        selection_cfg.get("ai", {}) if isinstance(selection_cfg, dict) else {}
-    )
-    prompt_version = (
-        ai_cfg.get("prompt_version") if isinstance(ai_cfg, dict) else None
-    )
+    ai_cfg = selection_cfg.get("ai", {}) if isinstance(selection_cfg, dict) else {}
+    prompt_version = ai_cfg.get("prompt_version") if isinstance(ai_cfg, dict) else None
 
     if isinstance(prompt_version, str) and prompt_version.strip():
         return prompt_version.strip()
@@ -348,7 +344,9 @@ def get_report_settings() -> ReportSettings:
         report_cfg.get("with_underwater"), defaults.with_underwater
     )
     index_to_100 = _coerce_bool(report_cfg.get("index_to_100"), defaults.index_to_100)
-    use_log_scale = _coerce_bool(report_cfg.get("use_log_scale"), defaults.use_log_scale)
+    use_log_scale = _coerce_bool(
+        report_cfg.get("use_log_scale"), defaults.use_log_scale
+    )
     show_rolling = _coerce_bool(report_cfg.get("show_rolling"), defaults.show_rolling)
     show_heatmap = _coerce_bool(report_cfg.get("show_heatmap"), defaults.show_heatmap)
 

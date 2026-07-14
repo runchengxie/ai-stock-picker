@@ -83,7 +83,9 @@ def test_ensure_range_respects_ttl(tmp_path, monkeypatch):
 
     calls = SimpleNamespace(count=0)
 
-    def fake_download(series: str, start: dt.date, end: dt.date, **_: Any) -> pd.DataFrame:
+    def fake_download(
+        series: str, start: dt.date, end: dt.date, **_: Any
+    ) -> pd.DataFrame:
         calls.count += 1
         return data
 
@@ -240,9 +242,7 @@ def test_download_range_parses_response(tmp_path, monkeypatch):
     assert list(df.columns) == ["date", "daily_rate"]
     assert df.shape == (2, 2)
     assert df["date"].iloc[0] == dt.date(2024, 6, 1)
-    assert df["daily_rate"].iloc[0] == pytest.approx(
-        (1 + 0.05) ** (1 / 252) - 1
-    )
+    assert df["daily_rate"].iloc[0] == pytest.approx((1 + 0.05) ** (1 / 252) - 1)
 
 
 @pytest.mark.unit

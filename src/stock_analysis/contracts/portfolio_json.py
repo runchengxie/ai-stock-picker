@@ -7,12 +7,11 @@ filename (not modification time).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterable, Optional
-
 import json
 import re
+from collections.abc import Iterable
+from dataclasses import dataclass
+from pathlib import Path
 
 import pandas as pd
 
@@ -40,7 +39,7 @@ def _iter_json_files(root: Path) -> Iterable[Path]:
                 yield fp
 
 
-def _parse_date_from_filename(fp: Path) -> Optional[pd.Timestamp]:
+def _parse_date_from_filename(fp: Path) -> pd.Timestamp | None:
     name = fp.stem  # e.g., 2025-09-05
     m = _DATE_RE.match(name)
     if not m:
@@ -57,7 +56,7 @@ class PortfolioTickers:
     asof: str
 
 
-def pick_latest_result_json(root: Path) -> Optional[Path]:
+def pick_latest_result_json(root: Path) -> Path | None:
     """Pick the latest result JSON by filename date, not mtime."""
 
     candidates: list[tuple[pd.Timestamp, Path]] = []
@@ -93,7 +92,7 @@ def read_result_json_tickers(fp: Path) -> PortfolioTickers:
     return PortfolioTickers(tickers=tickers, asof=asof)
 
 
-def find_result_json_for_date(asof: str, root: Path) -> Optional[Path]:
+def find_result_json_for_date(asof: str, root: Path) -> Path | None:
     """Find the result JSON for a given date (YYYY-MM-DD) by filename."""
 
     try:
@@ -111,7 +110,7 @@ def find_result_json_for_date(asof: str, root: Path) -> Optional[Path]:
     return None
 
 
-def find_ai_json_for_date(asof: str, root: Path | None = None) -> Optional[Path]:
+def find_ai_json_for_date(asof: str, root: Path | None = None) -> Path | None:
     """Find the AI pick JSON for a given date (YYYY-MM-DD) by filename.
 
     Searches year subfolder first, then all files under root for a name match.
@@ -120,7 +119,7 @@ def find_ai_json_for_date(asof: str, root: Path | None = None) -> Optional[Path]
     return find_result_json_for_date(asof, base)
 
 
-def pick_latest_ai_json(root: Path | None = None) -> Optional[Path]:
+def pick_latest_ai_json(root: Path | None = None) -> Path | None:
     """Pick the latest AI pick JSON by filename date, not mtime."""
 
     return pick_latest_result_json(root or AI_PORTFOLIO_JSON_DIR)
@@ -132,7 +131,7 @@ def read_ai_json_tickers(fp: Path) -> PortfolioTickers:
     return read_result_json_tickers(fp)
 
 
-def pick_latest_preliminary_json(root: Path | None = None) -> Optional[Path]:
+def pick_latest_preliminary_json(root: Path | None = None) -> Path | None:
     """Pick the latest preliminary result JSON by filename date."""
 
     return pick_latest_result_json(root or QUANT_PORTFOLIO_JSON_DIR)
@@ -144,7 +143,7 @@ def read_preliminary_json_tickers(fp: Path) -> PortfolioTickers:
     return read_result_json_tickers(fp)
 
 
-def find_preliminary_json_for_date(asof: str, root: Path | None = None) -> Optional[Path]:
+def find_preliminary_json_for_date(asof: str, root: Path | None = None) -> Path | None:
     """Find the preliminary JSON for a given date (YYYY-MM-DD)."""
 
     return find_result_json_for_date(asof, root or QUANT_PORTFOLIO_JSON_DIR)

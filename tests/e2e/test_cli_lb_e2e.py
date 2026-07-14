@@ -208,7 +208,9 @@ def test_cli_lb_quote_with_credentials():
 
         # If the error is an expected one, skip the test.
         if any(err in error_msg for err in acceptable_errors):
-            pytest.skip(f"API call failed for an expected reason, skipping test: {result.stderr}")
+            pytest.skip(
+                f"API call failed for an expected reason, skipping test: {result.stderr}"
+            )
         # Otherwise, fail the test because the failure was unexpected.
         else:
             pytest.fail(f"lb-quote command failed unexpectedly: {result.stderr}")

@@ -15,7 +15,11 @@ import pytest
 
 pytest.importorskip("pydantic")
 from pydantic import ValidationError
-from stock_analysis.ai_lab.selection.ai_stock_pick import AIStockPick, parse_response_robust
+
+from stock_analysis.ai_lab.selection.ai_stock_pick import (
+    AIStockPick,
+    parse_response_robust,
+)
 
 
 @pytest.mark.unit

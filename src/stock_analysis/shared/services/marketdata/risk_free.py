@@ -6,10 +6,10 @@ import datetime as dt
 import os
 import sqlite3
 import time
+from collections.abc import Iterable
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 import pandas as pd
 import requests
@@ -80,7 +80,7 @@ class RiskFreeRateService:
         *,
         settings: RiskFreeSettings | None = None,
         db_path: Path = DB_PATH,
-    ) -> "RiskFreeRateService":
+    ) -> RiskFreeRateService:
         """Build a service instance using project configuration."""
 
         cfg = settings or get_risk_free_settings()
@@ -152,7 +152,9 @@ class RiskFreeRateService:
                     self.fallback_rate,
                     exc,
                 )
-                return pd.Series(self.fallback_rate, index=normalized_index, dtype=float)
+                return pd.Series(
+                    self.fallback_rate, index=normalized_index, dtype=float
+                )
             raise RiskFreeRateServiceError(
                 f"{exc}. Run 'stockq rf update --start {start.isoformat()} --end {end.isoformat()}'"
                 f" to populate {series_id} data."
@@ -179,7 +181,9 @@ class RiskFreeRateService:
                     series_id,
                     self.fallback_rate,
                 )
-                return pd.Series(self.fallback_rate, index=normalized_index, dtype=float)
+                return pd.Series(
+                    self.fallback_rate, index=normalized_index, dtype=float
+                )
             raise RiskFreeRateServiceError(
                 "No cached risk-free data for series "
                 f"{series_id} between {start} and {end}. "
@@ -220,7 +224,7 @@ class RiskFreeRateService:
         if sigma is None or sigma == 0 or pd.isna(sigma):
             return None
         mu = excess.mean()
-        sharpe = (mu / sigma) * (periods ** 0.5)
+        sharpe = (mu / sigma) * (periods**0.5)
         return float(sharpe)
 
     def describe_cache(self, series: str | None = None) -> RiskFreeCacheInfo:
@@ -361,7 +365,9 @@ class RiskFreeRateService:
             if pd.notna(r)
         ]
         if not payload:
-            raise RiskFreeRateFetchError("Downloaded data contains no valid observations.")
+            raise RiskFreeRateFetchError(
+                "Downloaded data contains no valid observations."
+            )
         conn.executemany(
             "INSERT OR REPLACE INTO risk_free_rates(series, date, rate) VALUES(?, ?, ?)",
             payload,
@@ -378,7 +384,9 @@ class RiskFreeRateService:
     ) -> pd.DataFrame:
         api_key = os.getenv("FRED_API_KEY")
         if not api_key:
-            raise RiskFreeRateFetchError("FRED_API_KEY is not configured in the environment.")
+            raise RiskFreeRateFetchError(
+                "FRED_API_KEY is not configured in the environment."
+            )
 
         params = {
             "series_id": series,
@@ -405,9 +413,7 @@ class RiskFreeRateService:
             if df.empty:
                 return pd.DataFrame(columns=["date", "daily_rate"])
             df["date"] = pd.to_datetime(df["date"], errors="coerce").dt.date
-            df["annual_rate"] = (
-                pd.to_numeric(df["value"], errors="coerce") / 100.0
-            )
+            df["annual_rate"] = pd.to_numeric(df["value"], errors="coerce") / 100.0
             df = df.dropna(subset=["date", "annual_rate"])
             if df.empty:
                 return pd.DataFrame(columns=["date", "daily_rate"])
@@ -415,7 +421,9 @@ class RiskFreeRateService:
             df["daily_rate"] = self._annual_to_daily(df["annual_rate"])
             return df[["date", "daily_rate"]]
 
-        raise RiskFreeRateFetchError("Exceeded maximum retries when fetching from FRED.")
+        raise RiskFreeRateFetchError(
+            "Exceeded maximum retries when fetching from FRED."
+        )
 
     @staticmethod
     def _annual_to_daily(annual_rate: pd.Series) -> pd.Series:

@@ -7,7 +7,6 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional, Set
 
 
 # --- CONFIGURATION ---
@@ -31,7 +30,7 @@ OUTPUT_FILENAME = "full_project_source.txt"
 # --- EXCLUSION LISTS ---
 
 # Directories to exclude if they appear ANYWHERE in the project structure.
-EXCLUDE_DIRS_ANYWHERE: Set[str] = {
+EXCLUDE_DIRS_ANYWHERE: set[str] = {
     ".git",
     "__pycache__",
     ".pytest_cache",
@@ -50,7 +49,7 @@ EXCLUDE_DIRS_ANYWHERE: Set[str] = {
 
 # Directories to exclude ONLY if they are in the project root directory.
 # This allows keeping nested directories with the same name (e.g., 'src/app/data').
-EXCLUDE_DIRS_ROOT_ONLY: Set[str] = {
+EXCLUDE_DIRS_ROOT_ONLY: set[str] = {
     "data",  # User-specific data, not source code
     #     "tests",
     ".ruff_cache",
@@ -70,7 +69,7 @@ EXCLUDE_DIRS_ROOT_ONLY: Set[str] = {
 EXCLUDE_DIR_PATTERNS: tuple[str, ...] = (".egg-info",)
 
 # File extensions to exclude, typically for binary or non-source files.
-EXCLUDE_EXTENSIONS: Set[str] = {
+EXCLUDE_EXTENSIONS: set[str] = {
     ".pyc",
     ".pyo",
     ".so",
@@ -102,7 +101,7 @@ EXCLUDE_EXTENSIONS: Set[str] = {
 
 # Specific filenames to exclude. The chosen output file will be added at runtime
 # to ensure it is not reprocessed on subsequent runs.
-EXCLUDE_FILES: Set[str] = {
+EXCLUDE_FILES: set[str] = {
     OUTPUT_FILENAME,
     ".DS_Store",
     "Thumbs.db",
@@ -118,16 +117,16 @@ def is_config_metadata_text_file(filepath: Path) -> bool:
     return filepath.suffix.lower() == ".csv" and "configs" in filepath.parts
 
 
-def process_notebook(filepath: Path) -> Optional[str]:
+def process_notebook(filepath: Path) -> str | None:
     """
     Parses a Jupyter Notebook (.ipynb) file, extracting only the code and
     markdown content while ignoring all cell outputs.
     """
     try:
-        with open(filepath, "r", encoding="utf-8", errors="replace") as f:
+        with open(filepath, encoding="utf-8", errors="replace") as f:
             notebook = json.load(f)
 
-        content_parts: List[str] = []
+        content_parts: list[str] = []
         for i, cell in enumerate(notebook.get("cells", [])):
             cell_type = cell.get("cell_type")
             source_list = cell.get("source", [])
@@ -166,7 +165,7 @@ def is_likely_text_file(filepath: Path) -> bool:
         with open(filepath, "rb") as f:
             # If the first 1KB contains a null byte, it's likely a binary file.
             return b"\0" not in f.read(1024)
-    except (IOError, PermissionError):
+    except (OSError, PermissionError):
         return False
 
 
@@ -174,7 +173,7 @@ def get_directory_exclude_reason(
     dir_name: str,
     current_path: Path,
     project_root: Path,
-) -> Optional[str]:
+) -> str | None:
     """Returns the exclude reason for a directory, or None if it is included."""
     if dir_name in EXCLUDE_DIRS_ANYWHERE:
         return "excluded directory (anywhere)"
@@ -187,7 +186,7 @@ def get_directory_exclude_reason(
 
 def get_archive_file_status(
     filepath: Path,
-    exclude_files: Set[str],
+    exclude_files: set[str],
 ) -> tuple[bool, str]:
     """Classifies whether a file should be included in the content export."""
     if filepath.name in exclude_files:
@@ -204,12 +203,12 @@ def get_archive_file_status(
 
 
 def filter_walk_directories(
-    dirnames: List[str],
+    dirnames: list[str],
     current_path: Path,
     project_root: Path,
-) -> List[str]:
+) -> list[str]:
     """Returns the directories that should remain traversable for os.walk."""
-    included_dirs: List[str] = []
+    included_dirs: list[str] = []
     for dirname in dirnames:
         if get_directory_exclude_reason(dirname, current_path, project_root):
             continue
@@ -220,8 +219,8 @@ def filter_walk_directories(
 
 def collect_project_tree_lines(
     project_root: Path,
-    exclude_files: Set[str],
-) -> tuple[List[str], dict[str, int]]:
+    exclude_files: set[str],
+) -> tuple[list[str], dict[str, int]]:
     """Builds a tree view of the repository with include/exclude markers.
 
     Excluded directories are shown only at the first excluded node and their
@@ -233,7 +232,7 @@ def collect_project_tree_lines(
         "excluded_directories": 0,
     }
 
-    def _walk_tree(current_path: Path, prefix: str) -> List[str]:
+    def _walk_tree(current_path: Path, prefix: str) -> list[str]:
         try:
             children = sorted(
                 current_path.iterdir(),
@@ -242,7 +241,7 @@ def collect_project_tree_lines(
         except OSError as exc:
             return [f"{prefix}`-- [exclude] <unreadable> ({exc})"]
 
-        lines: List[str] = []
+        lines: list[str] = []
         for index, child in enumerate(children):
             is_last = index == len(children) - 1
             connector = "`-- " if is_last else "|-- "
@@ -279,13 +278,13 @@ def collect_project_tree_lines(
 
 def collect_file_tree(
     project_root: Path,
-    exclude_files: Set[str],
-) -> List[Path]:
+    exclude_files: set[str],
+) -> list[Path]:
     """
     Collects all file paths in the project, applying the same exclusion rules
     as the main combine function.
     """
-    files: List[Path] = []
+    files: list[Path] = []
 
     for dirpath, dirnames, filenames in os.walk(project_root, topdown=True):
         current_path = Path(dirpath)
@@ -366,7 +365,7 @@ def combine_project_files(  # noqa: C901 - high complexity due to multiple neste
                 for filename in sorted(filenames):
                     filepath = current_path / filename
                     relative_path_str = filepath.relative_to(project_root).as_posix()
-                    content: Optional[str] = None
+                    content: str | None = None
                     include_in_archive, reason = get_archive_file_status(
                         filepath, exclude_files
                     )
@@ -393,7 +392,7 @@ def combine_project_files(  # noqa: C901 - high complexity due to multiple neste
                                 "  + Processing Text File: %s", relative_path_str
                             )
                             with open(
-                                filepath, "r", encoding="utf-8", errors="replace"
+                                filepath, encoding="utf-8", errors="replace"
                             ) as infile:
                                 content = infile.read()
                         # Step 3: The inclusion classifier should have filtered
@@ -431,7 +430,7 @@ def combine_project_files(  # noqa: C901 - high complexity due to multiple neste
         )
         logging.info("Combined output saved to: %s", output_filepath)
 
-    except IOError as e:
+    except OSError as e:
         logging.error("Could not write to output file %s: %s", output_filepath, e)
     except Exception as e:
         logging.error("An unexpected error occurred: %s", e)

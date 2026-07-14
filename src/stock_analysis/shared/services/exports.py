@@ -14,9 +14,8 @@ from typing import Any, Literal
 
 import pandas as pd
 
-from ..utils.paths import AI_PORTFOLIO_FILE, OUTPUTS_DIR, QUANT_PORTFOLIO_FILE
 from ..logging import get_logger
-
+from ..utils.paths import AI_PORTFOLIO_FILE, OUTPUTS_DIR, QUANT_PORTFOLIO_FILE
 
 LOGGER = get_logger(__name__)
 
@@ -24,7 +23,9 @@ LOGGER = get_logger(__name__)
 def _emit(level: str, message: str, *, asof: Any | None = None, **context: Any) -> None:
     base_context: dict[str, Any] = {"component": "exports", "asof": asof}
     base_context.update({k: v for k, v in context.items() if v is not None})
-    context_parts = [f"{key}={value}" for key, value in base_context.items() if value is not None]
+    context_parts = [
+        f"{key}={value}" for key, value in base_context.items() if value is not None
+    ]
     if context_parts:
         message = f"{message} [{' '.join(context_parts)}]"
     getattr(LOGGER, level)(message)

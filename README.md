@@ -1,8 +1,10 @@
-# 量化研究、AI Lab 与执行平台
+# AI Stock Picker
 
-该项目现在按三个逻辑边界组织，但仍保留在同一个仓库中：
+LLM-driven stock selection engine. Uses large language models (currently Gemini, with
+DeepSeek support planned) to pick stocks from a quantitative pre-screened candidate pool,
+with structured reasoning and confidence scoring.
 
-- `research`：数据准备、规则量化选股、组合快照生成与回测，是项目主线。
+- `ai_lab`：LLM-based stock selection, prompt engineering, multi-key rate limiting, and backtesting.
 - `ai-lab`：基于 `gemini-2.5-pro` 的实验性股票筛选与解释生成，不作为 canonical strategy。
 - `execution`：基于 canonical `targets.json` 的账户快照、调仓规划、审计与 LongPort 执行入口。
 

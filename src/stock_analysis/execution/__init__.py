@@ -1,2 +1,0 @@
-"""Execution-platform package."""
-

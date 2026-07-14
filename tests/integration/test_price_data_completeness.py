@@ -2,6 +2,7 @@ import sqlite3
 
 import pandas as pd
 import pytest
+
 from stock_analysis.shared.utils.paths import (
     DB_PATH,
     QUANT_PORTFOLIO_FILE,
