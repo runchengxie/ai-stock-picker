@@ -26,8 +26,8 @@ DEFAULT_LIMIT = 10
 # Ratchet budgets: freeze current state. After initial setup, these should match
 # the output of `--json` and only be tightened (never loosened).
 DEFAULT_RATCHET_BUDGETS: dict[str, int] = {
-    "long_lines_over_100": 5,
-    "functions_over_100": 6,
+    "long_lines_over_100": 0,
+    "functions_over_100": 0,
     "functions_over_250": 0,
     "functions_over_500": 0,
     "c901_file_ignores": 0,
@@ -144,7 +144,7 @@ def _function_metrics_for_file(
     metrics: list[FunctionMetric] = []
     relative = _relative_path(repo_root, path)
     for node in ast.walk(tree):
-        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+        if not isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef):
             continue
         end_line = getattr(node, "end_lineno", None)
         if end_line is None:

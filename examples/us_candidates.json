@@ -1,0 +1,21 @@
+{
+  "date": "2026-07-14",
+  "date_int": "20260714",
+  "generated_at": "2026-07-15T08:30:00-04:00",
+  "data_cutoff": "2026-07-14",
+  "universe_size": 2,
+  "candidates": [
+    {
+      "ticker": "AAPL",
+      "company_name": "Apple Inc.",
+      "score": 7.5,
+      "sector": "Technology"
+    },
+    {
+      "ticker": "BRK.B",
+      "company_name": "Berkshire Hathaway",
+      "score": 7.0,
+      "sector": "Financials"
+    }
+  ]
+}
