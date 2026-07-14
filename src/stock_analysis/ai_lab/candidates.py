@@ -314,9 +314,9 @@ def _validate_hot_candidate_row(row: dict[str, object]) -> None:
     for field in ("source_topics", "source_concepts"):
         values = row.get(field)
         if not isinstance(values, list) or any(
-            not isinstance(item, str) for item in values
+            not isinstance(item, str) or not item.strip() for item in values
         ):
-            raise ValueError(f"candidate {field} must be an array of strings")
+            raise ValueError(f"candidate {field} must be an array of non-empty strings")
 
 
 def _is_finite_number(value: object) -> TypeGuard[int | float]:
@@ -349,12 +349,36 @@ def _validate_hot_provenance(metadata: dict[str, object], expected_date: str) ->
     if provenance.get("strict_point_in_time") is not False:
         raise ValueError("hot-sector provenance cannot claim strict point-in-time")
     rotation = _required_object(provenance, "rotation")
-    if rotation.get("provenance_level") not in {"signal_date_only", "unavailable"}:
+    provenance_level = rotation.get("provenance_level")
+    if provenance_level not in {"signal_date_only", "unavailable"}:
         raise ValueError("hot-sector rotation provenance_level is invalid")
     if rotation.get("strict_point_in_time") is not False:
         raise ValueError("hot-sector rotation cannot claim strict point-in-time")
     if rotation.get("publisher_receipt_verified") is not False:
         raise ValueError("hot-sector rotation cannot claim a publisher receipt")
+    try:
+        as_of_date = parse_date(str(rotation.get("as_of_date")))
+    except ValueError as exc:
+        raise ValueError("hot-sector rotation.as_of_date must be a valid date") from exc
+    if as_of_date.strftime("%Y%m%d") != expected_date:
+        raise ValueError("hot-sector rotation.as_of_date must match observation_date")
+    signal_date_value = rotation.get("signal_date")
+    signal_date: date | None = None
+    if signal_date_value is not None:
+        try:
+            signal_date = parse_date(str(signal_date_value))
+        except ValueError as exc:
+            raise ValueError(
+                "hot-sector rotation.signal_date must be a valid date or null"
+            ) from exc
+        if signal_date > as_of_date:
+            raise ValueError(
+                "hot-sector rotation.signal_date must not exceed as_of_date"
+            )
+    if provenance_level == "signal_date_only" and signal_date is None:
+        raise ValueError("hot-sector signal_date_only rotation requires signal_date")
+    if provenance_level == "unavailable" and signal_date_value is not None:
+        raise ValueError("hot-sector unavailable rotation requires a null signal_date")
 
 
 def _validate_hot_evidence(

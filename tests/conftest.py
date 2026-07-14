@@ -85,6 +85,8 @@ def _hot_contract_metadata() -> dict[str, object]:
             "artifact_role": "candidate_universe",
             "strict_point_in_time": False,
             "rotation": {
+                "as_of_date": "20260714",
+                "signal_date": "20260714",
                 "provenance_level": "signal_date_only",
                 "strict_point_in_time": False,
                 "publisher_receipt_verified": False,

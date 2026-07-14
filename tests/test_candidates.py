@@ -273,7 +273,7 @@ def test_row_date_and_topic_types_are_validated(tmp_path: Path) -> None:
         }
     ]
     manifest = write_manifest(tmp_path / "bad-topic.json", rows=rows)
-    with pytest.raises(ValueError, match="array of strings"):
+    with pytest.raises(ValueError, match="non-empty strings"):
         load_candidate_universe(manifest, market="CN", as_of=date(2026, 7, 15))
 
 
@@ -338,4 +338,68 @@ def test_hot_contract_provenance_dates_must_match(tmp_path: Path) -> None:
     provenance["data_cutoff"] = "20260713"
     _rewrite(path, payload)
     with pytest.raises(ValueError, match="provenance.data_cutoff"):
+        load_candidate_universe(path, market="CN", as_of=date(2026, 7, 15))
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "message"),
+    [
+        ("as_of_date", "20991231", "must match observation_date"),
+        ("signal_date", "20260715", "must not exceed as_of_date"),
+        ("signal_date", "not-a-date", "valid date or null"),
+    ],
+)
+def test_hot_rotation_dates_match_owner_contract(
+    tmp_path: Path,
+    field: str,
+    value: object,
+    message: str,
+) -> None:
+    path = write_manifest(tmp_path / "rotation-date.json")
+    payload = _payload(path)
+    provenance = cast(dict[str, Any], payload["provenance"])
+    rotation = cast(dict[str, object], provenance["rotation"])
+    rotation[field] = value
+    _rewrite(path, payload)
+
+    with pytest.raises(ValueError, match=message):
+        load_candidate_universe(path, market="CN", as_of=date(2026, 7, 15))
+
+
+def test_signal_date_only_rotation_requires_signal_date(tmp_path: Path) -> None:
+    path = write_manifest(tmp_path / "missing-signal-date.json")
+    payload = _payload(path)
+    provenance = cast(dict[str, Any], payload["provenance"])
+    rotation = cast(dict[str, object], provenance["rotation"])
+    rotation["signal_date"] = None
+    _rewrite(path, payload)
+
+    with pytest.raises(ValueError, match="requires signal_date"):
+        load_candidate_universe(path, market="CN", as_of=date(2026, 7, 15))
+
+
+def test_unavailable_rotation_requires_null_signal_date(tmp_path: Path) -> None:
+    path = write_manifest(tmp_path / "unavailable-rotation.json")
+    payload = _payload(path)
+    provenance = cast(dict[str, Any], payload["provenance"])
+    rotation = cast(dict[str, object], provenance["rotation"])
+    rotation["provenance_level"] = "unavailable"
+    _rewrite(path, payload)
+
+    with pytest.raises(ValueError, match="requires a null signal_date"):
+        load_candidate_universe(path, market="CN", as_of=date(2026, 7, 15))
+
+
+@pytest.mark.parametrize("field", ["source_topics", "source_concepts"])
+def test_hot_candidate_source_arrays_reject_blank_values(
+    tmp_path: Path,
+    field: str,
+) -> None:
+    path = write_manifest(tmp_path / f"blank-{field}.json")
+    payload = _payload(path)
+    rows = cast(list[dict[str, object]], payload["candidate_universe"])
+    rows[0][field] = [""]
+    _rewrite(path, payload)
+
+    with pytest.raises(ValueError, match="non-empty strings"):
         load_candidate_universe(path, market="CN", as_of=date(2026, 7, 15))
