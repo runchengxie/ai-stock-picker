@@ -41,7 +41,20 @@ jobs:
         run: uv lock --check
 
       - name: Ruff lint
-        run: uv run ruff check .
+        shell: bash
+        run: |
+          set +e
+          uv run ruff check . > ruff-diagnostics.txt 2>&1
+          status=$?
+          cat ruff-diagnostics.txt
+          if [[ $status -ne 0 ]]; then
+            git config user.name "runchengxie"
+            git config user.email "runchengxie@users.noreply.github.com"
+            git add ruff-diagnostics.txt
+            git commit -m "chore: capture Ruff diagnostics" || true
+            git push origin HEAD:codex/rename-package-contracts || true
+          fi
+          exit $status
 
       - name: Ruff format
         run: uv run ruff format --check .
@@ -87,6 +100,7 @@ jobs:
         run: |
           rm -f .github/workflows/refactor-validation.yml
           rm -f scripts/dev/apply_refactor.py
+          rm -f ruff-diagnostics.txt
 
       - name: Commit validated refactor
         shell: bash
