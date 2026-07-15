@@ -26,6 +26,7 @@ _PROMPT_FEATURES = {
     "trend_score",
     "volume_score",
 }
+_FEATURE_ALIASES = {"risk_score": "intraday_stability_score"}
 
 
 def normalize_candidates(manifest: ValidatedManifest) -> tuple[Candidate, ...]:
@@ -127,12 +128,13 @@ def _bounded_features(values: dict[str, object]) -> dict[str, object]:
         value = values[key]
         if value is None:
             continue
+        output_key = _FEATURE_ALIASES.get(key, key)[:100]
         if isinstance(value, str):
-            features[key[:100]] = value[:500]
+            features[output_key] = value[:500]
         elif isinstance(value, bool | int | float):
-            features[key[:100]] = value
+            features[output_key] = value
         elif isinstance(value, list):
-            features[key[:100]] = [str(item)[:100] for item in value[:20]]
+            features[output_key] = [str(item)[:100] for item in value[:20]]
     return features
 
 
