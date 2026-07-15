@@ -1,7 +1,7 @@
 [project]
 name = "ai-stock-picker"
 version = "0.2.0"
-description = "Strict, auditable LLM selection from precomputed stock candidate pools"
+description = "Provider-neutral, auditable LLM reranking of versioned stock candidate manifests"
 readme = "README.md"
 requires-python = ">=3.10, <3.13"
 dependencies = ["pydantic>=2.7,<3", "tzdata>=2025.2"]
@@ -17,17 +17,17 @@ dev = [
 ]
 
 [project.scripts]
-aipick = "stock_analysis.app.cli:app"
+aipick = "ai_stock_picker.cli:app"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["stock_analysis*"]
+include = ["ai_stock_picker*"]
 
 [tool.setuptools.package-data]
-stock_analysis = ["py.typed"]
+ai_stock_picker = ["py.typed"]
 
 [build-system]
 requires = ["setuptools>=77.0.3"]
@@ -53,34 +53,15 @@ include = ["src", "scripts", "tests"]
 [tool.ty.analysis]
 allowed-unresolved-imports = ["tomli", "tomllib"]
 
-[[tool.ty.overrides]]
-include = ["src/stock_analysis/ai_lab/candidates.py"]
-
-[tool.ty.overrides.rules]
-unresolved-attribute = "ignore"
-
-[[tool.ty.overrides]]
-include = ["src/stock_analysis/ai_lab/providers.py"]
-
-[tool.ty.overrides.rules]
-invalid-return-type = "ignore"
-
-[[tool.ty.overrides]]
-include = ["tests/test_selection.py"]
-
-[tool.ty.overrides.rules]
-invalid-argument-type = "ignore"
-invalid-assignment = "ignore"
-
 [tool.coverage.run]
 branch = true
-source = ["stock_analysis"]
+source = ["ai_stock_picker"]
 
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=stock_analysis --cov-report=term-missing --cov-fail-under=75"
+addopts = "--cov=ai_stock_picker --cov-report=term-missing --cov-report=json:.coverage.json"
 testpaths = ["tests"]
 markers = ["unit: fast, isolated tests"]

@@ -1,4 +1,4 @@
-"""Securely load one provider-specific API key from a credentials file."""
+"""Securely load one requested API key from a credentials file."""
 
 from __future__ import annotations
 
@@ -6,15 +6,9 @@ import os
 import re
 import stat
 
-from stock_analysis.ai_lab.contracts import Provider
-
 MAX_CREDENTIAL_FILE_BYTES = 128 * 1024
 
-_PROVIDER_KEYS: dict[Provider, str] = {
-    "deepseek": "DEEPSEEK_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-}
-_KEY_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+_KEY_NAME = re.compile(r"[A-Z][A-Z0-9_]*")
 _READ_CHUNK_BYTES = 16 * 1024
 
 
@@ -22,22 +16,14 @@ class CredentialFileError(RuntimeError):
     """A sanitized credentials-file validation or parsing failure."""
 
 
-def load_provider_api_key(
-    provider: Provider,
+def load_api_key(
+    key_name: str,
     path: str | os.PathLike[str],
 ) -> str:
-    """Return only the API key assigned to ``provider`` in a secure file.
+    """Return only one literal ``KEY=value`` assignment from a secure file."""
 
-    The file format is deliberately smaller than dotenv or shell syntax: blank
-    lines and whole-line comments are ignored, and all other useful lines are
-    literal ``KEY=value`` assignments. Values are never expanded or executed.
-    """
-
-    try:
-        requested_key = _PROVIDER_KEYS[provider]
-    except KeyError:
-        raise CredentialFileError("unsupported credential provider") from None
-
+    if _KEY_NAME.fullmatch(key_name) is None:
+        raise CredentialFileError("invalid credential key name")
     descriptor = _open_securely(path)
     try:
         initial = os.fstat(descriptor)
@@ -53,7 +39,7 @@ def load_provider_api_key(
         ) from None
     finally:
         os.close(descriptor)
-    return _parse_requested_assignment(payload, requested_key)
+    return _parse_requested_assignment(payload, key_name)
 
 
 def _open_securely(path: str | os.PathLike[str]) -> int:
@@ -111,8 +97,6 @@ def _owner_check_supported() -> bool:
 
 
 def _file_snapshot(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
-    """Return the metadata that must remain stable for the entire read."""
-
     return (
         metadata.st_dev,
         metadata.st_ino,
@@ -175,8 +159,4 @@ def _looks_like_requested_assignment(line: str, requested_key: str) -> bool:
     return prefix.match(stripped) is not None
 
 
-__all__ = [
-    "CredentialFileError",
-    "MAX_CREDENTIAL_FILE_BYTES",
-    "load_provider_api_key",
-]
+__all__ = ["CredentialFileError", "MAX_CREDENTIAL_FILE_BYTES", "load_api_key"]

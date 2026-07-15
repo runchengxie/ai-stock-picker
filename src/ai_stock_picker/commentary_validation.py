@@ -6,9 +6,9 @@ import ipaddress
 import re
 import unicodedata
 
-from .candidates import Candidate
+from .candidate_models import Candidate
 from .commentary_contract import FIELD_ALIASES
-from .contracts import Market, Provider
+from .contracts import Market
 
 _CJK_IDEOGRAPH = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 _LATIN_LETTER = re.compile(r"[A-Za-z]")
@@ -167,7 +167,7 @@ def validate_customer_commentary(
     candidate: Candidate,
     *,
     market: Market,
-    provider: Provider,
+    provider: str,
     model: str,
 ) -> None:
     """Validate one commentary field against language, policy, and candidate data."""
@@ -211,7 +211,7 @@ def validate_legacy_customer_commentary(
     value: str,
     *,
     market: Market,
-    provider: Provider,
+    provider: str,
     model: str,
 ) -> None:
     """Apply customer-safety checks without imposing the current grounding policy."""
@@ -225,7 +225,7 @@ def validate_legacy_customer_commentary(
 def _reject_system_metadata_terms(
     field: str,
     value: str,
-    provider: Provider,
+    provider: str,
     model: str,
 ) -> None:
     compact = _compact_for_policy_scan(value)

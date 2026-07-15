@@ -1,204 +1,72 @@
 # 输入格式
 
-`aipick` 接受 JSON manifest，也兼容 UTF-8 CSV。
+核心命令 `aipick pick` 只接受版本化 JSON manifest。
 
-推荐使用 JSON。JSON 可以记录生成时间、观测日期和数据截点。CSV 缺少这些信息，只适合探索和旧数据迁移。
+市场由 manifest 的 `market` 字段声明，当前支持 `CN` 和 `US`。
 
-## 通用限制
-
-所有输入都会检查：
-
-- 文件必须存在
-- 文件大小不能超过 10 MB
-- 候选数量不能超过 1000
-- 候选池不能为空
-- 股票代码必须符合市场格式
-- 股票代码不能重复
-- 分数必须是有限数值
-- 名称、主题和特征字符串不能超过长度限制
-
-`--as-of` 表示本次选择信号日期。候选数据的观测日期可以早于该日期，不能晚于该日期。
-
-## A 股 JSON
-
-A 股优先使用 `hot_sector_candidate_universe` v1 契约。
-
-仓库示例：
-
-- [`../examples/cn_candidates.json`](../examples/cn_candidates.json)
-
-### 契约标识
-
-以下字段必须完全匹配：
+## 通用候选池 v1
 
 ```json
 {
   "schema_version": "1.0.0",
-  "artifact_type": "hot_sector_candidate_universe",
-  "market": "CN"
-}
-```
-
-### 日期与时间
-
-以下日期字段必须指向同一个观测日：
-
-- `date`
-- `date_int`
-- `observation_date`
-- `data_cutoff`
-
-`generated_at` 必须是带 UTC offset 的 ISO 8601 时间。
-
-同日生成时，上海市场时间不能早于 16:00。观测日之后生成的候选池会记录相应证据限制。
-
-还需要满足：
-
-```json
-{
-  "data_cutoff_semantics": "end_of_day",
-  "execution_not_before": "next_trading_session",
-  "future_data_included": false
-}
-```
-
-项目只记录 `execution_not_before`。项目没有交易所日历，不会自行验证实际下一交易日。
-
-### 候选字段
-
-每个候选至少需要：
-
-- `ts_code`
-- `name`
-- `score`
-- `relevance`
-- `source_topics`
-- `source_concepts`
-
-示例：
-
-```json
-{
-  "ts_code": "002371.SZ",
-  "name": "北方华创",
-  "score": 1.25,
-  "relevance": 0.92,
-  "source_topics": ["半导体国产替代"],
-  "source_concepts": ["半导体设备"]
-}
-```
-
-`score` 必须是有限数值。
-
-`relevance` 必须位于 0 至 1 之间。
-
-`source_topics` 和 `source_concepts` 必须是字符串数组，数组中的字符串不能为空。
-
-### Provenance 与 evidence
-
-A 股 v1 契约还会检查：
-
-- `provenance.timezone`
-- `provenance.observation_date`
-- `provenance.data_cutoff`
-- `provenance.rotation`
-- `evidence.temporal_context`
-- `evidence.limitations`
-- `quality_report`
-- `outcome_report`
-
-生成阶段的 `quality_report` 和 `outcome_report` 必须保持 deferred 状态。候选生成阶段不能写入未来表现。
-
-完整字段可直接参考仓库中的 A 股示例。
-
-## 美股 JSON
-
-美股当前使用通用 JSON manifest。
-
-仓库示例：
-
-- [`../examples/us_candidates.json`](../examples/us_candidates.json)
-
-顶层至少需要：
-
-- `generated_at`
-- `date`、`observation_date` 或 `as_of`
-- `universe_size`
-- `candidates`
-
-候选至少需要：
-
-- `ticker` 或 `symbol`
-- `company_name` 或 `name`
-- `score`
-
-主题可以来自：
-
-- `sector`
-- `industry`
-- `topic`
-
-示例：
-
-```json
-{
-  "date": "2026-07-14",
+  "artifact_type": "stock_candidate_universe",
+  "market": "US",
+  "observation_date": "2026-07-14",
   "generated_at": "2026-07-15T08:30:00-04:00",
   "data_cutoff": "2026-07-14",
-  "universe_size": 1,
+  "universe_size": 2,
   "candidates": [
     {
-      "ticker": "AAPL",
-      "company_name": "Apple Inc.",
-      "score": 7.5,
-      "sector": "Technology"
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
+      "score": 9.0,
+      "topic": "Technology",
+      "features": {
+        "quality": 0.9
+      }
     }
   ]
 }
 ```
 
-通用 JSON 没有受支持的版本化契约，因此 `point_in_time_assurance` 会标记为 `unverified`。
+每个候选必须包含：
 
-## Legacy CSV
-
-CSV 必须使用 UTF-8 编码。
-
-A 股需要：
-
-- `ts_code` 或 `symbol`
+- `symbol`
 - `name`
-- `score` 或可转换为数值的 `relevance`
+- `score`
 
-美股需要：
+可选字段：
 
-- `ticker` 或 `symbol`
-- `company_name` 或 `name`
-- `score` 或可转换为数值的 `relevance`
+- `topic`
+- `features`
 
-可选日期字段：
+通用 v1 可以同时表达 A 股和美股候选。市场只影响股票代码校验和时间判断。
 
-- `trade_date`
-- `date`
-- `as_of`
+通用 v1 不具备上游发布回执，因此 `point_in_time_assurance` 固定为 `unverified`。
 
-CSV 可以使用 JSON 数组或 Python 列表文本表示主题。该兼容能力主要服务旧文件，不建议用于新流程。
+## 热题材候选池 v1
 
-CSV 没有 manifest 生成时间和可信数据截点，因此结果始终标记为 `unverified`。
+项目继续支持 `hot_sector_candidate_universe` v1。该契约包含更严格的 A 股时点、provenance、rotation 和 evidence 字段。
 
-## 常见错误
+完整示例见：
 
-### `top_n exceeds candidate count`
+- [`examples/cn_candidates.json`](../examples/cn_candidates.json)
 
-`--top-n` 大于候选数量。请减少数量或提供更大的候选池。
+它最高只提供 `signal_date_only` assurance，仍然不构成严格时点证明或样本外证据。
 
-### `manifest observation date is after selection --as-of`
+## 输入限制
 
-候选观测日在选择信号日期之后。请检查 `--as-of` 和输入文件日期。
+- 文件必须是 UTF-8 JSON object
+- 最大 10 MB
+- 候选最多 1000 行
+- 股票代码必须唯一
+- `score` 必须是有限数值
+- `generated_at` 必须带 UTC offset
+- `data_cutoff` 不能晚于 `observation_date`
+- `observation_date` 不能晚于本次 `--as-of`
 
-### `candidate symbols must be unique`
+## legacy CSV
 
-候选池包含重复股票代码。
+CSV 不再进入核心选股路径。
 
-### `manifest generated_at must include an explicit UTC offset`
-
-`generated_at` 缺少时区信息。请使用类似 `2026-07-15T08:30:00+08:00` 的格式。
+使用 `aipick migrate-csv` 将旧 CSV 转成通用候选池 v1。迁移命令要求显式提供市场、观测日期、生成时间和数据截点，避免程序替用户猜测时点语义。

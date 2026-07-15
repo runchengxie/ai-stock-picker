@@ -20,6 +20,7 @@ def _commands() -> tuple[tuple[str, ...], ...]:
         ("ruff", "format", "--check", "."),
         ("ty", "check"),
         (sys.executable, "-m", "pytest"),
+        (sys.executable, "scripts/dev/coverage_ratchet.py"),
         (
             sys.executable,
             "scripts/dev/maintainability_metrics.py",

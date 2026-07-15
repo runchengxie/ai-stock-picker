@@ -1,0 +1,23 @@
+{
+  "schema_version": "1.0.0",
+  "artifact_type": "stock_candidate_universe",
+  "market": "CN",
+  "observation_date": "2026-07-14",
+  "generated_at": "2026-07-15T06:00:00+08:00",
+  "data_cutoff": "2026-07-14",
+  "universe_size": 2,
+  "candidates": [
+    {
+      "symbol": "600000.SH",
+      "name": "浦发银行",
+      "score": 8.5,
+      "topic": "银行"
+    },
+    {
+      "symbol": "000001.SZ",
+      "name": "平安银行",
+      "score": 8.0,
+      "topic": "金融科技"
+    }
+  ]
+}
