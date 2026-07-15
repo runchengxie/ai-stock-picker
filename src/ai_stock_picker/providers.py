@@ -84,17 +84,20 @@ def call_provider(
     temperature: float,
     timeout: float = 120.0,
     transport: Transport | None = None,
+    api_key: str | None = None,
 ) -> str:
-    """Call the provider represented by a resolved configuration."""
+    """Call a provider using an explicit key or its dedicated environment variable."""
 
     _validate_request(prompt, temperature, timeout)
-    api_key = os.environ.get(config.api_key_env, "").strip()
-    if not api_key:
+    credential = (api_key if api_key is not None else os.environ.get(config.api_key_env, "")).strip()
+    if not credential:
         raise ProviderError(f"{config.api_key_env} is required for {config.name}")
     if config.provider_api == "gemini-generate-content-v1beta":
-        return _call_gemini(prompt, config, api_key, temperature, timeout, transport)
+        return _call_gemini(
+            prompt, config, credential, temperature, timeout, transport
+        )
     return _call_openai_compatible(
-        prompt, config, api_key, temperature, timeout, transport
+        prompt, config, credential, temperature, timeout, transport
     )
 
 
