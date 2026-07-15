@@ -11,10 +11,31 @@ from ai_stock_picker.cli import app, create_parser, main
 from ai_stock_picker.selection import create_selection
 
 
+def _provider_response() -> str:
+    return json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": "AAPL",
+                    "confidence_score": 8,
+                    "reasoning": (
+                        "The overall candidate score supports the relative ranking."
+                    ),
+                    "risk_note": (
+                        "The overall candidate score is the only supplied basis for "
+                        "this risk note."
+                    ),
+                }
+            ]
+        }
+    )
+
+
 def test_root_help_is_market_neutral(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     output = capsys.readouterr().out
     assert "pick" in output
+    assert "validate" in output
     assert "migrate-csv" in output
     assert "cn" not in output.lower()
 
@@ -42,9 +63,12 @@ def test_pick_parser_has_no_market_subcommand() -> None:
     assert args.command == "pick"
 
 
-def test_dry_run_derives_market_from_manifest(
-    us_manifest: Path, capsys: pytest.CaptureFixture[str]
+def test_dry_run_derives_market_without_reading_credentials(
+    us_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
+    missing_credentials = tmp_path / "missing.env"
     code = main(
         [
             "pick",
@@ -60,6 +84,8 @@ def test_dry_run_derives_market_from_manifest(
             "en",
             "--provider",
             "deepseek",
+            "--credential-file",
+            str(missing_credentials),
             "--dry-run",
         ]
     )
@@ -101,21 +127,10 @@ def test_live_path_writes_artifact(
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    response = json.dumps(
-        {
-            "picks": [
-                {
-                    "symbol": "AAPL",
-                    "confidence_score": 8,
-                    "reasoning": "Evidence",
-                    "risk_note": "Risk",
-                }
-            ]
-        }
-    )
+    response = _provider_response()
     monkeypatch.setattr(
         "ai_stock_picker.cli.run_selection",
-        lambda plan, timeout: create_selection(
+        lambda plan, timeout, credential_file=None: create_selection(
             plan,
             response,
             generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
@@ -146,6 +161,43 @@ def test_live_path_writes_artifact(
     assert payload["provider"] == "deepseek"
     assert "generation_trace" in payload
     assert "validated picks" in capsys.readouterr().out
+
+
+def test_validate_command_rechecks_artifact(
+    us_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from ai_stock_picker.selection import build_selection_plan
+
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=datetime(2026, 7, 15).date(),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    artifact = create_selection(
+        plan,
+        _provider_response(),
+        generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+    )
+    selection = tmp_path / "selection.json"
+    selection.write_text(artifact.model_dump_json(), encoding="utf-8")
+    code = main(
+        [
+            "validate",
+            "--selection",
+            str(selection),
+            "--candidates",
+            str(us_manifest),
+        ]
+    )
+    assert code == 0
+    output = json.loads(capsys.readouterr().out)
+    assert output["valid"] is True
+    assert output["validation_profile"] == "current_full"
 
 
 def test_existing_output_fails_before_provider(
