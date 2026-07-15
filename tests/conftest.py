@@ -7,76 +7,105 @@ from typing import Any
 import pytest
 
 
-def _default_rows(market: str) -> list[dict[str, Any]]:
-    if market == "CN":
-        return [
+def generic_payload(market: str = "US") -> dict[str, Any]:
+    rows = (
+        [
             {
-                "ts_code": "600000.SH",
-                "name": "浦发银行",
+                "symbol": "AAPL",
+                "name": "Apple Inc.",
                 "score": 9.0,
-                "relevance": 0.9,
-                "source_topics": ["银行"],
-                "source_concepts": [],
-                "trend_score": 0.8,
+                "topic": "Technology",
+                "features": {"quality": 0.9},
             },
             {
-                "ts_code": "000001.SZ",
-                "name": "平安银行",
+                "symbol": "BRK.B",
+                "name": "Berkshire Hathaway",
                 "score": 8.0,
-                "relevance": 0.8,
-                "source_topics": ["金融科技"],
-                "source_concepts": [],
-                "trend_score": 0.7,
+                "topic": "Financials",
             },
             {
-                "ts_code": "430047.BJ",
-                "name": "诺思兰德",
+                "symbol": "MSFT",
+                "name": "Microsoft Corp.",
                 "score": 7.0,
-                "relevance": 0.7,
-                "source_topics": ["医药"],
-                "source_concepts": [],
-                "trend_score": 0.6,
+                "topic": "Software",
             },
         ]
-    return [
-        {
-            "ticker": "AAPL",
-            "company_name": "Apple Inc.",
-            "score": 9.0,
-            "sector": "Technology",
-        },
-        {
-            "ticker": "BRK.B",
-            "company_name": "Berkshire Hathaway",
-            "score": 8.0,
-            "sector": "Financials",
-        },
-        {
-            "ticker": "MSFT",
-            "company_name": "Microsoft Corp.",
-            "score": 7.0,
-            "industry": "Software",
-        },
-    ]
+        if market == "US"
+        else [
+            {
+                "symbol": "600000.SH",
+                "name": "浦发银行",
+                "score": 9.0,
+                "topic": "银行",
+            },
+            {
+                "symbol": "000001.SZ",
+                "name": "平安银行",
+                "score": 8.0,
+                "topic": "金融科技",
+            },
+            {
+                "symbol": "430047.BJ",
+                "name": "诺思兰德",
+                "score": 7.0,
+                "topic": "医药",
+            },
+        ]
+    )
+    return {
+        "schema_version": "1.0.0",
+        "artifact_type": "stock_candidate_universe",
+        "market": market,
+        "observation_date": "2026-07-14",
+        "generated_at": (
+            "2026-07-15T08:30:00-04:00"
+            if market == "US"
+            else "2026-07-15T06:00:00+08:00"
+        ),
+        "data_cutoff": "2026-07-14",
+        "universe_size": len(rows),
+        "candidates": rows,
+    }
 
 
-def _hot_contract_metadata() -> dict[str, object]:
+def hot_payload() -> dict[str, Any]:
     deferred = {
         "available": False,
         "reason": "future_data_excluded_from_generation",
         "horizons": {},
     }
+    rows = [
+        {
+            "ts_code": "600000.SH",
+            "name": "浦发银行",
+            "score": 9.0,
+            "relevance": 0.9,
+            "source_topics": ["银行"],
+            "source_concepts": ["价值"],
+            "trend_score": 0.8,
+        },
+        {
+            "ts_code": "000001.SZ",
+            "name": "平安银行",
+            "score": 8.0,
+            "relevance": 0.8,
+            "source_topics": ["金融科技"],
+            "source_concepts": ["银行"],
+            "trend_score": 0.7,
+        },
+    ]
     return {
         "schema_version": "1.0.0",
         "artifact_type": "hot_sector_candidate_universe",
         "market": "CN",
+        "date": "2026-07-14",
+        "date_int": "20260714",
         "observation_date": "20260714",
+        "data_cutoff": "20260714",
         "data_cutoff_semantics": "end_of_day",
         "execution_not_before": "next_trading_session",
         "future_data_included": False,
-        "topics": [],
-        "data_sources": {},
-        "config_snapshot": {},
+        "generated_at": "2026-07-15T06:00:00+08:00",
         "provenance": {
             "timezone": "Asia/Shanghai",
             "observation_date": "20260714",
@@ -102,54 +131,39 @@ def _hot_contract_metadata() -> dict[str, object]:
                 "post_observation_reconstruction_not_oos",
             ],
         },
+        "topics": [
+            {
+                "topic": "银行",
+                "weight": 0.8,
+                "reasoning": "主题示例",
+                "related_concepts": ["价值"],
+                "source_signals": ["example"],
+            }
+        ],
+        "candidate_universe": rows,
+        "universe_size": len(rows),
+        "config_snapshot": {},
+        "data_sources": {},
         "quality_report": dict(deferred),
         "outcome_report": dict(deferred),
     }
 
 
-def write_manifest(
-    path: Path,
-    *,
-    market: str = "CN",
-    rows: list[dict[str, Any]] | None = None,
-    **overrides: object,
-) -> Path:
-    if rows is None:
-        rows = _default_rows(market)
-    elif market == "CN":
-        rows = [
-            {
-                "relevance": 0.5,
-                "source_topics": [],
-                "source_concepts": [],
-                **row,
-            }
-            for row in rows
-        ]
-    payload: dict[str, object] = {
-        "date": "2026-07-14",
-        "date_int": "20260714",
-        "generated_at": (
-            "2026-07-15T06:00:00+08:00"
-            if market == "CN"
-            else "2026-07-15T08:30:00-04:00"
-        ),
-        "data_cutoff": "2026-07-14",
-        "universe_size": len(rows),
-        "candidate_universe" if market == "CN" else "candidates": rows,
-    }
-    if market == "CN":
-        payload.update(_hot_contract_metadata())
-    payload.update(overrides)
+def write_payload(path: Path, payload: dict[str, Any]) -> Path:
     path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
     return path
 
 
 @pytest.fixture
-def cn_manifest(tmp_path: Path) -> Path:
-    return write_manifest(tmp_path / "cn.json")
+def us_manifest(tmp_path: Path) -> Path:
+    return write_payload(tmp_path / "us.json", generic_payload("US"))
 
 
 @pytest.fixture
-def us_manifest(tmp_path: Path) -> Path:
-    return write_manifest(tmp_path / "us.json", market="US")
+def cn_manifest(tmp_path: Path) -> Path:
+    return write_payload(tmp_path / "cn.json", generic_payload("CN"))
+
+
+@pytest.fixture
+def hot_manifest(tmp_path: Path) -> Path:
+    return write_payload(tmp_path / "hot.json", hot_payload())
