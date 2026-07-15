@@ -1,14 +1,14 @@
-name: Refactor validation
+name: Final refactor validation
 
 on:
   pull_request:
-    branches: [main]
+    branches: [codex/rename-package-contracts]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
-  group: refactor-validation
+  group: final-refactor-validation
   cancel-in-progress: true
 
 jobs:
@@ -17,7 +17,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: codex/rename-package-contracts
+          ref: ${{ github.event.pull_request.head.sha }}
 
       - uses: actions/setup-python@v5
         with:
@@ -28,89 +28,61 @@ jobs:
       - name: Install supported Python versions
         run: uv python install 3.10 3.12
 
-      - name: Remove obsolete namespace
-        run: python scripts/dev/apply_refactor.py
-
-      - name: Refresh dependency lock
-        run: uv lock
-
       - name: Install locked development environment
         run: uv sync --locked --group dev
 
-      - name: Check dependency lock
-        run: uv lock --check
-
-      - name: Ruff lint
+      - name: Run all validation commands and capture logs
         shell: bash
         run: |
-          set +e
-          uv run ruff check . > ruff-diagnostics.txt 2>&1
-          status=$?
-          cat ruff-diagnostics.txt
-          if [[ $status -ne 0 ]]; then
-            git config user.name "runchengxie"
-            git config user.email "runchengxie@users.noreply.github.com"
-            git add ruff-diagnostics.txt
-            git commit -m "chore: capture Ruff diagnostics" || true
-            git push origin HEAD:codex/rename-package-contracts || true
-          fi
-          exit $status
-
-      - name: Ruff format
-        run: uv run ruff format --check .
-
-      - name: ty
-        run: uv run ty check
-
-      - name: Tests and coverage report
-        run: uv run pytest
-
-      - name: Coverage ratchet
-        run: uv run python scripts/dev/coverage_ratchet.py
-
-      - name: Maintainability ratchet
-        run: uv run python scripts/dev/maintainability_metrics.py --ratchet
-
-      - name: Build wheel and source distribution
-        run: uv run python -m build
-
-      - name: Smoke-test wheel on Python 3.10 and 3.12
-        shell: bash
-        run: |
+          mkdir -p validation-logs
+          failures=0
+          run_check() {
+            name="$1"
+            shift
+            set +e
+            "$@" >"validation-logs/$name.txt" 2>&1
+            status=$?
+            set -e
+            echo "$status" >"validation-logs/$name.status"
+            if [[ $status -ne 0 ]]; then failures=$((failures + 1)); fi
+          }
+          run_check lock uv lock --check
+          run_check ruff-lint uv run ruff check .
+          run_check ruff-format uv run ruff format --check .
+          run_check ty uv run ty check
+          run_check pytest uv run pytest
+          run_check coverage-ratchet uv run python scripts/dev/coverage_ratchet.py
+          run_check maintainability uv run python scripts/dev/maintainability_metrics.py --ratchet
+          run_check build uv run python -m build
+          run_check whitespace git diff --check
           for version in 3.10 3.12; do
             venv="$RUNNER_TEMP/wheel-$version"
-            uv venv --python "$version" "$venv"
-            uv pip install --python "$venv/bin/python" dist/*.whl
-            cd "$RUNNER_TEMP"
-            "$venv/bin/aipick" --help
-            "$venv/bin/aipick" pick \
+            run_check "venv-$version" uv venv --python "$version" "$venv"
+            run_check "wheel-install-$version" uv pip install --python "$venv/bin/python" dist/*.whl
+            run_check "help-$version" "$venv/bin/aipick" --help
+            run_check "us-dry-run-$version" "$venv/bin/aipick" pick \
               --candidates "$GITHUB_WORKSPACE/examples/us_candidates.json" \
               --as-of 2026-07-15 --top-n 1 --style quality \
               --response-language en --provider deepseek --dry-run
-            "$venv/bin/aipick" pick \
+            run_check "cn-dry-run-$version" "$venv/bin/aipick" pick \
               --candidates "$GITHUB_WORKSPACE/examples/cn_candidates.json" \
               --as-of 2026-07-15 --top-n 1 --style quality \
               --response-language zh-CN --provider gemini --dry-run
           done
+          echo "$failures" > validation-logs/failures.count
 
-      - name: Check whitespace
-        run: git diff --check
+      - name: Upload validation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-refactor-validation-logs
+          path: validation-logs
 
-      - name: Remove temporary validation files
-        run: |
-          rm -f .github/workflows/refactor-validation.yml
-          rm -f scripts/dev/apply_refactor.py
-          rm -f ruff-diagnostics.txt
-
-      - name: Commit validated refactor
+      - name: Require all checks to pass
         shell: bash
         run: |
-          git config user.name "runchengxie"
-          git config user.email "runchengxie@users.noreply.github.com"
-          git add -A
-          if git diff --cached --quiet; then
-            echo "No generated changes to commit"
-          else
-            git commit -m "refactor: complete provider-neutral pipeline"
-            git push origin HEAD:codex/rename-package-contracts
+          failures=$(cat validation-logs/failures.count)
+          if [[ "$failures" != "0" ]]; then
+            echo "$failures validation command(s) failed"
+            exit 1
           fi
