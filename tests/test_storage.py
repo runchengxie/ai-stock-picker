@@ -18,8 +18,13 @@ def response(symbol: str) -> str:
                 {
                     "symbol": symbol,
                     "confidence_score": 8,
-                    "reasoning": "Evidence",
-                    "risk_note": "Risk",
+                    "reasoning": (
+                        "The overall candidate score supports the relative ranking."
+                    ),
+                    "risk_note": (
+                        "The overall candidate score is the only supplied basis for "
+                        "this risk note."
+                    ),
                 }
             ]
         }
