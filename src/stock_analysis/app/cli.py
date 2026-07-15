@@ -52,13 +52,16 @@ def _add_market_parser(
         required=True,
         help="Candidate JSON manifest or exploratory legacy CSV",
     )
-    pick.add_argument("--output", required=True, help="Destination selection JSON")
+    pick.add_argument(
+        "--output",
+        help="Destination selection JSON; required unless --dry-run is used",
+    )
     pick.add_argument(
         "--as-of",
         required=True,
         help="Selection signal date in YYYY-MM-DD or YYYYMMDD format",
     )
-    pick.add_argument("--top-n", type=int, default=10)
+    pick.add_argument("--top-n", type=int, required=True)
     styles = ("quality", "growth") if market == "us" else ("momentum", "quality")
     pick.add_argument("--style", choices=styles)
     pick.add_argument("--model", help="Provider model name")
@@ -118,13 +121,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                             plan.universe.point_in_time_assurance
                         ),
                         "eligible_as_oos_evidence": False,
-                        "output": str(args.output),
+                        "output": str(args.output) if args.output is not None else None,
                     },
                     ensure_ascii=False,
                     indent=2,
                 )
             )
             return 0
+        if args.output is None:
+            raise ValueError("--output is required unless --dry-run is used")
         output_path = Path(args.output).expanduser().resolve()
         if output_path.exists() or output_path.is_symlink():
             raise FileExistsError(
