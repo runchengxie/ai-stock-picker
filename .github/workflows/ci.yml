@@ -55,8 +55,30 @@ jobs:
       - name: Ruff format
         run: uv run ruff format --check .
 
-      - name: ty
-        run: uv run ty check
+      - name: Capture ty diagnostics
+        shell: bash
+        run: |
+          set +e
+          uv run ty check > .ty-migration-output.txt 2>&1
+          echo "$?" > .ty-migration-exit-code.txt
+          exit 0
+
+      - name: Commit ty diagnostics
+        shell: bash
+        run: |
+          if git diff --quiet -- .ty-migration-output.txt .ty-migration-exit-code.txt && \
+             git ls-files --error-unmatch .ty-migration-output.txt >/dev/null 2>&1; then
+            exit 0
+          fi
+          git config user.name "tooling-migration-bot"
+          git config user.email "tooling-migration-bot@users.noreply.github.com"
+          git add .ty-migration-output.txt .ty-migration-exit-code.txt
+          git commit -m "chore: capture ty migration diagnostics"
+          git push
+
+      - name: Require ty success
+        shell: bash
+        run: test "$(cat .ty-migration-exit-code.txt)" = "0"
 
       - name: Tests
         run: uv run pytest
