@@ -4,13 +4,13 @@ from __future__ import annotations
 
 import json
 
-from .candidate_models import CandidateUniverse
+from .candidate_models import Candidate, CandidateUniverse
 from .commentary_contract import (
     COMMENTARY_POLICY,
     FEATURE_SEMANTICS,
     preferred_commentary_labels,
 )
-from .contracts import ResponseLanguage, Style
+from .contracts import Market, ResponseLanguage, Style
 
 _STYLE_GUIDANCE: dict[Style, str] = {
     "momentum": (
@@ -106,24 +106,15 @@ def build_prompt(
     )
 
 
-def _prompt_candidate(candidate: object, market: str) -> dict[str, object]:
-    from .candidate_models import Candidate
-    from .contracts import Market
-
-    item = candidate
-    assert isinstance(item, Candidate)
-    typed_market = market
-    assert typed_market in {"CN", "US"}
-    available_fields = {"symbol", "name", "topic", "score", *item.features}
+def _prompt_candidate(candidate: Candidate, market: Market) -> dict[str, object]:
+    available_fields = {"symbol", "name", "topic", "score", *candidate.features}
     return {
-        "symbol": item.symbol,
-        "name": item.name,
-        "topic": item.topic,
-        "score": item.score,
-        "features": item.features,
-        "commentary_labels": preferred_commentary_labels(
-            available_fields, typed_market  # type: ignore[arg-type]
-        ),
+        "symbol": candidate.symbol,
+        "name": candidate.name,
+        "topic": candidate.topic,
+        "score": candidate.score,
+        "features": candidate.features,
+        "commentary_labels": preferred_commentary_labels(available_fields, market),
     }
 
 
