@@ -11,6 +11,7 @@ from ai_stock_picker.selection import (
     build_selection_plan,
     create_selection,
     run_selection,
+    validate_selection_artifact,
 )
 
 
@@ -22,14 +23,17 @@ def response(*symbols: str, language: str = "en") -> str:
                     "symbol": symbol,
                     "confidence_score": 9 - index,
                     "reasoning": (
-                        f"候选特征支持 {symbol} 的排序"
+                        "综合候选评分支持该股票的相对排序。"
                         if language == "zh"
-                        else f"Evidence for {symbol}"
+                        else "The overall candidate score supports the relative ranking."
                     ),
                     "risk_note": (
-                        f"{symbol} 的主要风险来自候选特征波动"
+                        "风险说明仅基于综合候选评分，仍有信息边界。"
                         if language == "zh"
-                        else f"Risk for {symbol}"
+                        else (
+                            "The overall candidate score is the only supplied basis "
+                            "for this risk note."
+                        )
                     ),
                 }
                 for index, symbol in enumerate(symbols)
@@ -120,12 +124,35 @@ def test_cn_output_language_is_independent_of_provider(cn_manifest: Path) -> Non
     )
     assert artifact.provider == "gemini"
     assert artifact.response_language == "zh-CN"
-    with pytest.raises(ValueError, match="CJK"):
+    with pytest.raises(ValueError, match="Simplified Chinese"):
         create_selection(
             plan,
             response("600000.SH", language="en"),
             generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
         )
+
+
+def test_commentary_rejects_metadata_and_trade_advice(us_manifest: Path) -> None:
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    payload = json.loads(response("AAPL"))
+    payload["picks"][0]["reasoning"] = (
+        "The overall candidate score supports the ranking by DeepSeek."
+    )
+    with pytest.raises(ValueError, match="system metadata"):
+        create_selection(plan, json.dumps(payload))
+    payload = json.loads(response("AAPL"))
+    payload["picks"][0]["risk_note"] = (
+        "The overall candidate score supports buying this stock."
+    )
+    with pytest.raises(ValueError, match="trading advice"):
+        create_selection(plan, json.dumps(payload))
 
 
 def test_provider_output_must_match_candidate_set(us_manifest: Path) -> None:
@@ -216,6 +243,29 @@ def test_run_selection_accepts_injected_provider(us_manifest: Path) -> None:
     )
     assert artifact.picks[0].symbol == "AAPL"
     assert observed == [(plan.prompt, "deepseek-chat", 0.2, 3.5)]
+
+
+def test_artifact_revalidation_is_full(us_manifest: Path) -> None:
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    artifact = create_selection(
+        plan,
+        response("AAPL"),
+        generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+    )
+    result = validate_selection_artifact(artifact, us_manifest)
+    assert result.validation_profile == "current_full"
+    payload = artifact.model_dump()
+    payload["generation_trace"]["prompt_sha256"] = "0" * 64
+    tampered = SelectionArtifact.model_validate(payload)
+    with pytest.raises(ValueError, match="prompt_sha256"):
+        validate_selection_artifact(tampered, us_manifest)
 
 
 def test_artifact_round_trip_is_strict(us_manifest: Path) -> None:
