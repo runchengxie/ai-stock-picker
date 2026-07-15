@@ -114,6 +114,10 @@ provider HTTPS endpoint；Gemini key 放在 `x-goog-api-key` header，不进入 
 候选池外 symbol，或非精确 `top_n` 数量都会失败。最终 `name` 和 `topic` 只从候选池
 回填。
 
+CN prompt 要求 `reasoning` 与 `risk_note` 使用简体中文，创建 artifact 时还会逐字段
+检查至少包含一个 CJK 汉字；模型返回纯英文会 fail closed。US prompt 继续要求这两个
+字段使用英文。当前 prompt 契约版本为 `2026-07-15.2`。
+
 持久化 artifact 是 `ai_stock_selection` v1，主要字段包括：
 
 - `selection_as_of`、`candidate_observation_date`、`candidate_generated_at`、

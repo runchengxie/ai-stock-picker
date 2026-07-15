@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "1.0.0"
-PROMPT_VERSION = "2026-07-15.1"
+PROMPT_VERSION = "2026-07-15.2"
 
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
@@ -117,7 +117,7 @@ class SelectionArtifact(BaseModel):
     generated_at: datetime
     provider: Provider
     model: str = Field(min_length=1, max_length=100)
-    prompt_version: Literal["2026-07-15.1"] = "2026-07-15.1"
+    prompt_version: Literal["2026-07-15.2"] = "2026-07-15.2"
     style: Style
     input_contract: InputContract
     temporal_status: TemporalStatus
