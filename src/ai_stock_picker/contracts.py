@@ -84,8 +84,8 @@ class StockPick(BaseModel):
     risk_note: str = Field(min_length=1, max_length=500)
 
 
-class Lineage(BaseModel):
-    """Content-addressed inputs used to create a selection artifact."""
+class GenerationTrace(BaseModel):
+    """Content fingerprints for the inputs used to create an artifact."""
 
     model_config = ConfigDict(extra="forbid", strict=True, frozen=True)
 
@@ -145,7 +145,7 @@ class SelectionArtifact(BaseModel):
     input_count: int = Field(gt=0)
     requested_top_n: int = Field(gt=0)
     selection_method: Literal["llm_candidate_rerank"] = "llm_candidate_rerank"
-    lineage: Lineage
+    generation_trace: GenerationTrace
     picks: tuple[StockPick, ...]
 
     @field_validator("provider")
@@ -156,10 +156,10 @@ class SelectionArtifact(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_artifact(self) -> "SelectionArtifact":
+    def validate_artifact(self) -> SelectionArtifact:
         self._validate_timestamps()
         self._validate_temporal_status()
-        self._validate_lineage_assurance()
+        self._validate_input_assurance()
         self._validate_pick_set()
         return self
 
@@ -204,7 +204,7 @@ class SelectionArtifact(BaseModel):
                 "temporal_status and evidence_limitations are inconsistent"
             )
 
-    def _validate_lineage_assurance(self) -> None:
+    def _validate_input_assurance(self) -> None:
         recognized_hot_contract = (
             self.input_contract == "hot_sector_candidate_universe_v1"
         )
@@ -227,7 +227,7 @@ class SelectionArtifact(BaseModel):
             or self.upstream_execution_not_before != "next_trading_session"
         ):
             raise ValueError(
-                "recognized hot-sector lineage requires complete candidate timing"
+                "recognized hot-sector input requires complete candidate timing"
             )
         required = {
             "rotation_publisher_receipt_unavailable",
@@ -235,7 +235,7 @@ class SelectionArtifact(BaseModel):
         }
         if not required.issubset(self.evidence_limitations):
             raise ValueError(
-                "recognized hot-sector lineage requires canonical OOS limitations"
+                "recognized hot-sector input requires canonical OOS limitations"
             )
         local = self.candidate_generated_at.astimezone(ZoneInfo("Asia/Shanghai"))
         if local.date() < self.candidate_observation_date or (
@@ -269,8 +269,8 @@ class SelectionArtifact(BaseModel):
 
 
 __all__ = [
+    "GenerationTrace",
     "InputContract",
-    "Lineage",
     "Market",
     "ModelPick",
     "ModelSelection",
