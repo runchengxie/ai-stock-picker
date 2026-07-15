@@ -12,10 +12,15 @@ from pathlib import Path
 from typing import cast
 
 from . import __version__
-from .contracts import Market, ResponseLanguage, Style
+from .contracts import Market, ResponseLanguage, SelectionArtifact, Style
+from .credentials import CredentialFileError
 from .csv_migration import migrate_csv
 from .providers import ProviderError, ProviderKind
-from .selection import build_selection_plan, run_selection
+from .selection import (
+    build_selection_plan,
+    run_selection,
+    validate_selection_artifact,
+)
 from .storage import write_selection
 from .time_utils import parse_date, parse_timestamp
 
@@ -34,6 +39,7 @@ def create_parser() -> argparse.ArgumentParser:
     )
     commands = parser.add_subparsers(dest="command", metavar="COMMAND")
     _add_pick_parser(commands)
+    _add_validate_parser(commands)
     _add_migrate_parser(commands)
     return parser
 
@@ -67,13 +73,27 @@ def _add_pick_parser(
     pick.add_argument(
         "--api-key-env", help="API-key environment variable for custom provider"
     )
+    pick.add_argument(
+        "--credential-file",
+        help="Owner credential file with exact mode 0600 (optional env alternative)",
+    )
     pick.add_argument("--temperature", type=float, default=0.2)
     pick.add_argument("--timeout", type=float, default=120.0)
     pick.add_argument(
         "--dry-run",
         action="store_true",
-        help="Validate input and build the prompt without calling a provider",
+        help="Validate input and build the prompt without reading credentials or calling a provider",
     )
+
+
+def _add_validate_parser(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    validate = commands.add_parser(
+        "validate", help="Revalidate a selection artifact against its candidate manifest"
+    )
+    validate.add_argument("--selection", required=True)
+    validate.add_argument("--candidates", required=True)
 
 
 def _add_migrate_parser(
@@ -100,20 +120,57 @@ def main(argv: Sequence[str] | None = None) -> int:
         return 0
     try:
         if args.command == "migrate-csv":
-            output = migrate_csv(
-                args.input,
-                args.output,
-                market=cast(Market, args.market),
-                observation_date=parse_date(args.observation_date),
-                generated_at=parse_timestamp(args.generated_at, "generated_at"),
-                data_cutoff=parse_date(args.data_cutoff),
-            )
-            print(f"wrote versioned candidate manifest to {output}")
-            return 0
+            return _run_migrate(args)
+        if args.command == "validate":
+            return _run_validate(args)
         return _run_pick(args)
-    except (OSError, ProviderError, ValueError) as exc:
+    except (CredentialFileError, OSError, ProviderError, ValueError) as exc:
         print(f"aipick: error: {exc}", file=sys.stderr)
         return 2
+
+
+def _run_migrate(args: argparse.Namespace) -> int:
+    output = migrate_csv(
+        args.input,
+        args.output,
+        market=cast(Market, args.market),
+        observation_date=parse_date(args.observation_date),
+        generated_at=parse_timestamp(args.generated_at, "generated_at"),
+        data_cutoff=parse_date(args.data_cutoff),
+    )
+    print(f"wrote versioned candidate manifest to {output}")
+    return 0
+
+
+def _run_validate(args: argparse.Namespace) -> int:
+    artifact = SelectionArtifact.model_validate_json(
+        Path(args.selection).expanduser().read_text(encoding="utf-8"),
+        strict=True,
+    )
+    validation = validate_selection_artifact(artifact, args.candidates)
+    print(
+        json.dumps(
+            {
+                "valid": True,
+                "schema_version": artifact.schema_version,
+                "market": artifact.market,
+                "provider": artifact.provider,
+                "model": artifact.model,
+                "prompt_version": artifact.prompt_version,
+                "validation_profile": validation.validation_profile,
+                "prompt_hash_revalidated": validation.prompt_hash_revalidated,
+                "commentary_policy_revalidated": (
+                    validation.commentary_policy_revalidated
+                ),
+                "selection_as_of": artifact.selection_as_of.isoformat(),
+                "picks": len(artifact.picks),
+                "response_sha256_verification": "format_only_raw_response_unavailable",
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    return 0
 
 
 def _run_pick(args: argparse.Namespace) -> int:
@@ -171,7 +228,11 @@ def _run_pick(args: argparse.Namespace) -> int:
             )
         )
         return 0
-    artifact = run_selection(plan, timeout=args.timeout)
+    artifact = run_selection(
+        plan,
+        timeout=args.timeout,
+        credential_file=args.credential_file,
+    )
     output = write_selection(artifact, cast(str, args.output))
     print(f"wrote {len(artifact.picks)} validated picks to {output}")
     print(f"temporal_status={artifact.temporal_status}")
