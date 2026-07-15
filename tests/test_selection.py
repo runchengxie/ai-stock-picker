@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from stock_analysis.ai_lab.contracts import SelectionArtifact
+from stock_analysis.ai_lab.contracts import PROMPT_VERSION, SelectionArtifact
 from stock_analysis.ai_lab.selection import (
     build_selection_plan,
     call_plan_provider,
@@ -17,15 +17,23 @@ from stock_analysis.ai_lab.selection import (
 )
 
 
-def _response(*symbols: str) -> str:
+def _response(*symbols: str, language: str = "zh") -> str:
     return json.dumps(
         {
             "picks": [
                 {
                     "symbol": symbol,
                     "confidence_score": 9 - index,
-                    "reasoning": f"Evidence for {symbol}",
-                    "risk_note": f"Risk for {symbol}",
+                    "reasoning": (
+                        f"候选特征支持 {symbol} 的排序"
+                        if language == "zh"
+                        else f"Evidence for {symbol}"
+                    ),
+                    "risk_note": (
+                        f"{symbol} 的主要风险来自候选特征波动"
+                        if language == "zh"
+                        else f"Risk for {symbol}"
+                    ),
                 }
                 for index, symbol in enumerate(symbols)
             ]
@@ -66,6 +74,35 @@ def test_us_plan_uses_gemini_and_quality_default(us_manifest: Path) -> None:
     assert plan.provider == "gemini"
     assert plan.model == "gemini-2.5-flash"
     assert plan.style == "quality"
+
+
+def test_prompts_bind_market_specific_output_language(
+    cn_manifest: Path, us_manifest: Path
+) -> None:
+    cn = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    us = build_selection_plan(
+        market="US",
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+
+    cn_prompt = json.loads(cn.prompt)
+    us_prompt = json.loads(us.prompt)
+    assert cn_prompt["response_language"] == "Simplified Chinese"
+    assert any("CJK ideograph" in item for item in cn_prompt["constraints"])
+    assert "候选特征" in cn_prompt["response_example"]["picks"][0]["reasoning"]
+    assert us_prompt["response_language"] == "English"
+    assert "Write reasoning and risk_note in English." in us_prompt["constraints"]
+    assert (
+        us_prompt["response_example"]["picks"][0]["reasoning"]
+        == "Evidence-based explanation from supplied features."
+    )
 
 
 def test_style_changes_prompt_materially(us_manifest: Path) -> None:
@@ -146,6 +183,7 @@ def test_selection_enriches_only_from_candidates(cn_manifest: Path) -> None:
     assert artifact.upstream_execution_not_before == "next_trading_session"
     assert artifact.generated_at == created
     assert artifact.provider == "deepseek"
+    assert artifact.prompt_version == PROMPT_VERSION == "2026-07-15.2"
     assert artifact.input_count == 3
     assert artifact.requested_top_n == 2
     assert [pick.symbol for pick in artifact.picks] == ["000001.SZ", "600000.SH"]
@@ -154,6 +192,41 @@ def test_selection_enriches_only_from_candidates(cn_manifest: Path) -> None:
     assert artifact.lineage.input_sha256 == plan.universe.input_sha256
     assert len(artifact.lineage.prompt_sha256) == 64
     assert len(artifact.lineage.response_sha256) == 64
+
+
+@pytest.mark.parametrize("field", ["reasoning", "risk_note"])
+def test_cn_selection_rejects_english_only_explanations(
+    cn_manifest: Path, field: str
+) -> None:
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    payload = json.loads(_response("600000.SH"))
+    payload["picks"][0][field] = "English only model output"
+
+    with pytest.raises(ValueError, match=rf"CN provider output {field}"):
+        create_selection(plan, json.dumps(payload, ensure_ascii=False))
+
+
+def test_cn_selection_accepts_simplified_chinese_explanations(
+    cn_manifest: Path,
+) -> None:
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    artifact = create_selection(
+        plan,
+        _response("600000.SH"),
+        generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+    assert artifact.picks[0].reasoning.startswith("候选特征")
+    assert "风险" in artifact.picks[0].risk_note
 
 
 def test_late_selection_is_never_oos(cn_manifest: Path) -> None:
@@ -196,12 +269,13 @@ def test_retrospective_check_uses_us_market_timezone(us_manifest: Path) -> None:
     )
     artifact = create_selection(
         plan,
-        _response("AAPL"),
+        _response("AAPL", language="en"),
         generated_at=datetime(2026, 7, 16, 0, 30, tzinfo=timezone.utc),
     )
     assert artifact.temporal_status == "contemporaneous"
     assert artifact.point_in_time_assurance == "unverified"
     assert artifact.generated_at.tzinfo == timezone.utc
+    assert artifact.picks[0].reasoning == "Evidence for AAPL"
 
 
 def test_artifact_schema_recomputes_temporal_status(cn_manifest: Path) -> None:

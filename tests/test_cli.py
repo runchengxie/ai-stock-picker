@@ -89,8 +89,8 @@ def test_live_path_writes_validated_artifact(
                 {
                     "symbol": "600000.SH",
                     "confidence_score": 8,
-                    "reasoning": "supplied evidence",
-                    "risk_note": "supplied risk",
+                    "reasoning": "候选特征支持该排序",
+                    "risk_note": "主要风险来自候选特征波动",
                 }
             ]
         }

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -32,6 +33,7 @@ ProviderCaller = Callable[[str, str, float], str]
 
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
+_CJK_IDEOGRAPH = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
 _DEFAULT_MODELS: dict[Market, str] = {
     "CN": "deepseek-chat",
@@ -143,6 +145,11 @@ def create_selection(
             raise ValueError(
                 f"provider output symbol is outside candidate pool: {symbol}"
             )
+        reasoning = model_pick.reasoning.strip()
+        risk_note = model_pick.risk_note.strip()
+        if plan.market == "CN":
+            _require_cn_language("reasoning", reasoning)
+            _require_cn_language("risk_note", risk_note)
         symbols.append(symbol)
         picks.append(
             StockPick(
@@ -151,8 +158,8 @@ def create_selection(
                 name=candidate.name,
                 topic=candidate.topic,
                 confidence_score=model_pick.confidence_score,
-                reasoning=model_pick.reasoning.strip(),
-                risk_note=model_pick.risk_note.strip(),
+                reasoning=reasoning,
+                risk_note=risk_note,
             )
         )
 
@@ -305,6 +312,20 @@ def _build_prompt(
             universe.candidates, key=lambda item: item.score, reverse=True
         )
     ]
+    if market == "CN":
+        response_language = "Simplified Chinese"
+        language_constraint = (
+            "Write reasoning and risk_note in Simplified Chinese; each field must "
+            "contain at least one CJK ideograph."
+        )
+        example_reasoning = "候选特征中的量价与主题信号支持该排序。"
+        example_risk = "候选特征显示的主要风险是波动与主题集中。"
+    else:
+        response_language = "English"
+        language_constraint = "Write reasoning and risk_note in English."
+        example_reasoning = "Evidence-based explanation from supplied features."
+        example_risk = "Specific downside risk from supplied features."
+
     instructions = {
         "task": "rerank_candidates",
         "market": market,
@@ -316,6 +337,7 @@ def _build_prompt(
         ),
         "style": style,
         "style_guidance": _STYLE_GUIDANCE[style],
+        "response_language": response_language,
         "required_count": top_n,
         "constraints": [
             "Choose exactly required_count unique symbols from candidates.",
@@ -327,14 +349,15 @@ def _build_prompt(
                 "and risk_note."
             ),
             "confidence_score must be an integer from 1 through 10.",
+            language_constraint,
         ],
         "response_example": {
             "picks": [
                 {
                     "symbol": candidate_rows[0]["symbol"],
                     "confidence_score": 7,
-                    "reasoning": "Evidence-based explanation from supplied features.",
-                    "risk_note": "Specific downside risk from supplied features.",
+                    "reasoning": example_reasoning,
+                    "risk_note": example_risk,
                 }
             ]
         },
@@ -343,6 +366,14 @@ def _build_prompt(
     return json.dumps(
         instructions, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
+
+
+def _require_cn_language(field: str, value: str) -> None:
+    if _CJK_IDEOGRAPH.search(value) is None:
+        raise ValueError(
+            f"CN provider output {field} must use Simplified Chinese and contain "
+            "at least one CJK ideograph"
+        )
 
 
 __all__ = [
