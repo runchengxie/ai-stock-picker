@@ -1,14 +1,14 @@
 name: Refactor validation
 
 on:
-  push:
-    branches: [codex/rename-package-contracts]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
 
 concurrency:
-  group: refactor-validation-${{ github.ref }}
+  group: refactor-validation
   cancel-in-progress: true
 
 jobs:
