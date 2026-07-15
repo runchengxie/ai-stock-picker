@@ -25,7 +25,9 @@ def response(*symbols: str, language: str = "en") -> str:
                     "reasoning": (
                         "综合候选评分支持该股票的相对排序。"
                         if language == "zh"
-                        else "The overall candidate score supports the relative ranking."
+                        else (
+                            "The overall candidate score supports the relative ranking."
+                        )
                     ),
                     "risk_note": (
                         "风险说明仅基于综合候选评分，仍有信息边界。"
@@ -194,6 +196,28 @@ def test_strict_schema_rejects_extra_fields_and_float(us_manifest: Path) -> None
         create_selection(plan, float_payload)
 
 
+def test_provider_output_json_fences_and_size_are_bounded(us_manifest: Path) -> None:
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    fenced = f"```json\n{response('AAPL')}\n```"
+    artifact = create_selection(
+        plan,
+        fenced,
+        generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+    )
+    assert artifact.picks[0].symbol == "AAPL"
+    with pytest.raises(ValueError, match="malformed markdown fences"):
+        create_selection(plan, "```json\n{}")
+    with pytest.raises(ValueError, match="1 MB"):
+        create_selection(plan, "x" * 1_000_001)
+
+
 def test_temporal_status_and_causal_order(us_manifest: Path) -> None:
     plan = build_selection_plan(
         candidates_path=us_manifest,
@@ -216,6 +240,81 @@ def test_temporal_status_and_causal_order(us_manifest: Path) -> None:
             response("AAPL"),
             generated_at=datetime(2026, 7, 15, 12, tzinfo=timezone.utc),
         )
+
+
+def test_temporal_status_uses_market_timezone(
+    cn_manifest: Path,
+    us_manifest: Path,
+) -> None:
+    cn_plan = build_selection_plan(
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="zh-CN",
+        provider="gemini",
+    )
+    cn_artifact = create_selection(
+        cn_plan,
+        response("600000.SH", language="zh"),
+        generated_at=datetime(2026, 7, 15, 16, 30, tzinfo=timezone.utc),
+    )
+    assert cn_artifact.temporal_status == "retrospective_simulation"
+
+    us_plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    us_artifact = create_selection(
+        us_plan,
+        response("AAPL"),
+        generated_at=datetime(2026, 7, 16, 0, 30, tzinfo=timezone.utc),
+    )
+    assert us_artifact.temporal_status == "contemporaneous"
+
+
+def test_artifact_schema_recomputes_temporal_status(cn_manifest: Path) -> None:
+    plan = build_selection_plan(
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="zh-CN",
+        provider="gemini",
+    )
+    artifact = create_selection(
+        plan,
+        response("600000.SH", language="zh"),
+        generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+    payload = artifact.model_dump()
+    payload["generated_at"] = datetime(2026, 7, 15, 16, 30, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="market timezone"):
+        SelectionArtifact.model_validate(payload)
+
+
+def test_artifact_schema_enforces_hot_eod_cutoff(hot_manifest: Path) -> None:
+    plan = build_selection_plan(
+        candidates_path=hot_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="zh-CN",
+        provider="gemini",
+    )
+    artifact = create_selection(
+        plan,
+        response("600000.SH", language="zh"),
+        generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+    payload = artifact.model_dump()
+    payload["candidate_generated_at"] = datetime(2026, 7, 14, 7, tzinfo=timezone.utc)
+    with pytest.raises(ValueError, match="completed EOD cutoff"):
+        SelectionArtifact.model_validate(payload)
 
 
 def test_run_selection_accepts_injected_provider(us_manifest: Path) -> None:
@@ -245,6 +344,49 @@ def test_run_selection_accepts_injected_provider(us_manifest: Path) -> None:
     assert observed == [(plan.prompt, "deepseek-chat", 0.2, 3.5)]
 
 
+def test_run_selection_passes_only_requested_credential_file_key(
+    us_manifest: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    credential_file = tmp_path / "owner.env"
+    credential_file.write_text(
+        "GEMINI_API_KEY=must-not-be-used\nDEEPSEEK_API_KEY=owner-key\n",
+        encoding="utf-8",
+    )
+    credential_file.chmod(0o600)
+    observed: list[str | None] = []
+
+    def fake_provider(
+        prompt: str,
+        provider: object,
+        *,
+        temperature: float,
+        timeout: float,
+        api_key: str | None,
+    ) -> str:
+        del prompt, provider, temperature, timeout
+        observed.append(api_key)
+        return response("AAPL")
+
+    monkeypatch.setattr("ai_stock_picker.selection.call_provider", fake_provider)
+    artifact = run_selection(
+        plan,
+        credential_file=credential_file,
+        generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+    )
+    assert artifact.picks[0].symbol == "AAPL"
+    assert observed == ["owner-key"]
+
+
 def test_artifact_revalidation_is_full(us_manifest: Path) -> None:
     plan = build_selection_plan(
         candidates_path=us_manifest,
@@ -265,6 +407,62 @@ def test_artifact_revalidation_is_full(us_manifest: Path) -> None:
     payload["generation_trace"]["prompt_sha256"] = "0" * 64
     tampered = SelectionArtifact.model_validate(payload)
     with pytest.raises(ValueError, match="prompt_sha256"):
+        validate_selection_artifact(tampered, us_manifest)
+
+
+@pytest.mark.parametrize(
+    ("case", "message"),
+    [
+        ("input_hash", "input_sha256"),
+        ("membership", "outside candidate manifest"),
+        ("enrichment", "enrichment does not match"),
+        ("url", "URL, address, or secret"),
+        ("trading", "trading advice"),
+        ("provider", "system metadata"),
+        ("language", "must use English"),
+    ],
+)
+def test_artifact_revalidation_rejects_candidate_or_commentary_mutations(
+    us_manifest: Path,
+    case: str,
+    message: str,
+) -> None:
+    plan = build_selection_plan(
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+        style="quality",
+        response_language="en",
+        provider="deepseek",
+    )
+    artifact = create_selection(
+        plan,
+        response("AAPL"),
+        generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+    )
+    payload = artifact.model_dump()
+    if case == "input_hash":
+        payload["generation_trace"]["input_sha256"] = "0" * 64
+    elif case == "membership":
+        payload["picks"][0]["symbol"] = "TSLA"
+    elif case == "enrichment":
+        payload["picks"][0]["name"] = "Invented Corp."
+    elif case == "url":
+        payload["picks"][0]["reasoning"] = (
+            "The overall candidate score is detailed at https://example.com."
+        )
+    elif case == "trading":
+        payload["picks"][0]["reasoning"] = (
+            "The overall candidate score supports buying this stock."
+        )
+    elif case == "provider":
+        payload["picks"][0]["reasoning"] = (
+            "The overall candidate score was produced by DeepSeek."
+        )
+    else:
+        payload["picks"][0]["reasoning"] = "综合候选评分支持该股票排序。"
+    tampered = SelectionArtifact.model_validate(payload)
+    with pytest.raises(ValueError, match=message):
         validate_selection_artifact(tampered, us_manifest)
 
 

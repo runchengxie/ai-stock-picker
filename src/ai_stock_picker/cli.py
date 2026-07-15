@@ -58,9 +58,7 @@ def _add_pick_parser(
     pick.add_argument(
         "--style", choices=("momentum", "quality", "growth"), required=True
     )
-    pick.add_argument(
-        "--response-language", choices=("zh-CN", "en"), required=True
-    )
+    pick.add_argument("--response-language", choices=("zh-CN", "en"), required=True)
     pick.add_argument(
         "--provider",
         choices=("deepseek", "gemini", "openai-compatible"),
@@ -82,7 +80,10 @@ def _add_pick_parser(
     pick.add_argument(
         "--dry-run",
         action="store_true",
-        help="Validate input and build the prompt without reading credentials or calling a provider",
+        help=(
+            "Validate input and build the prompt without reading credentials "
+            "or calling a provider"
+        ),
     )
 
 
@@ -90,7 +91,8 @@ def _add_validate_parser(
     commands: argparse._SubParsersAction[argparse.ArgumentParser],
 ) -> None:
     validate = commands.add_parser(
-        "validate", help="Revalidate a selection artifact against its candidate manifest"
+        "validate",
+        help="Revalidate a selection artifact against its candidate manifest",
     )
     validate.add_argument("--selection", required=True)
     validate.add_argument("--candidates", required=True)
@@ -217,9 +219,7 @@ def _run_pick(args: argparse.Namespace) -> int:
                     "requested_top_n": plan.top_n,
                     "input_sha256": plan.universe.input_sha256,
                     "prompt_sha256": sha256(plan.prompt.encode()).hexdigest(),
-                    "point_in_time_assurance": (
-                        plan.universe.point_in_time_assurance
-                    ),
+                    "point_in_time_assurance": (plan.universe.point_in_time_assurance),
                     "eligible_as_oos_evidence": False,
                     "output": str(args.output) if args.output is not None else None,
                 },
@@ -236,9 +236,7 @@ def _run_pick(args: argparse.Namespace) -> int:
     output = write_selection(artifact, cast(str, args.output))
     print(f"wrote {len(artifact.picks)} validated picks to {output}")
     print(f"temporal_status={artifact.temporal_status}")
-    print(
-        f"eligible_as_oos_evidence={str(artifact.eligible_as_oos_evidence).lower()}"
-    )
+    print(f"eligible_as_oos_evidence={str(artifact.eligible_as_oos_evidence).lower()}")
     return 0
 
 

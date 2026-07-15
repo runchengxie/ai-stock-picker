@@ -54,7 +54,8 @@ _STRUCTURED_METADATA_PATTERN = re.compile(
     r"(?:生成|撰写|输出)(?:这段)?(?:解读|文本|说明)?"
 )
 _TRADE_OR_PROMISE_PATTERN = re.compile(
-    r"(?i)\b(?:buy|sell|hold|overweight|underweight|price\s+target|target\s+price|"
+    r"(?i)\b(?:buy(?:ing)?|sell(?:ing)?|hold(?:ing)?|overweight|underweight|"
+    r"price\s+target|target\s+price|"
     r"recommend(?:ed|ation)?|accumulate|buy\s+the\s+dip|take\s+a\s+position|"
     r"portfolio\s+allocation|position\s+sizing|enter\s+the\s+trade|"
     r"(?:investors?\s+should\s+)?go\s+long|add\s+to\s+(?:the\s+)?portfolio|"
@@ -108,6 +109,23 @@ _STABILITY_LOW_INVERSION = re.compile(
     r"higher\s+stability|"
     r"风险低|风险越低|风险更低|风险较低|低风险|波动越小|波动更小|波动较小|"
     r"越稳定|更稳定|稳定性更高)"
+)
+_STABILITY_PREFIX_HIGH_INVERSION = re.compile(
+    r"(?is)(?:higher|\bhigh\b|越高|较高|高值)(?:\s+|的\s*)"
+    r"(?:intraday_stability_score|intraday\s+stability|日内波动稳定性)"
+    r".{0,60}(?:(?:high|higher|more|greater)\s+risk|riskier|"
+    r"(?:more|increasingly)\s+volatile|higher\s+volatility|"
+    r"(?:less|decreasingly)\s+stable|unstable|"
+    r"风险越高|风险更高|风险更大|高风险|波动越大|波动更大|波动越高|波动更高|"
+    r"越不稳定|更不稳定|不稳定|稳定性更低)"
+)
+_STABILITY_PREFIX_LOW_INVERSION = re.compile(
+    r"(?is)(?:lower|\blow\b|越低|较低|低值)(?:\s+|的\s*)"
+    r"(?:intraday_stability_score|intraday\s+stability|日内波动稳定性)"
+    r".{0,60}(?:(?:low|lower|less)\s+risk|risk\s+is\s+(?:low|lower)|"
+    r"less\s+volatile|lower\s+volatility|(?:more|increasingly)\s+stable|"
+    r"higher\s+stability|风险低|风险越低|风险更低|风险较低|低风险|"
+    r"波动越小|波动更小|波动较小|越稳定|更稳定|稳定性更高)"
 )
 _FORBIDDEN_COMPACT_TERMS = frozenset(
     {
@@ -261,8 +279,14 @@ def _reject_forbidden_content(field: str, value: str) -> None:
         raise ValueError(f"provider output {field} contains structured system metadata")
     if _FORBIDDEN_RISK_SCORE_PATTERN.search(value):
         raise ValueError(f"provider output {field} uses the forbidden risk-score label")
-    if _STABILITY_HIGH_INVERSION.search(value) or _STABILITY_LOW_INVERSION.search(
-        value
+    if any(
+        pattern.search(value)
+        for pattern in (
+            _STABILITY_HIGH_INVERSION,
+            _STABILITY_LOW_INVERSION,
+            _STABILITY_PREFIX_HIGH_INVERSION,
+            _STABILITY_PREFIX_LOW_INVERSION,
+        )
     ):
         raise ValueError(f"provider output {field} reverses stability semantics")
     if _NEGATED_OR_SUBJECTIVE_GROUNDING.search(value):
@@ -286,8 +310,14 @@ def _reject_legacy_safety_content(field: str, value: str) -> None:
         raise ValueError(f"provider output {field} contains structured system metadata")
     if _FORBIDDEN_RISK_SCORE_PATTERN.search(value):
         raise ValueError(f"provider output {field} uses the forbidden risk-score label")
-    if _STABILITY_HIGH_INVERSION.search(value) or _STABILITY_LOW_INVERSION.search(
-        value
+    if any(
+        pattern.search(value)
+        for pattern in (
+            _STABILITY_HIGH_INVERSION,
+            _STABILITY_LOW_INVERSION,
+            _STABILITY_PREFIX_HIGH_INVERSION,
+            _STABILITY_PREFIX_LOW_INVERSION,
+        )
     ):
         raise ValueError(f"provider output {field} reverses stability semantics")
     if _TRADE_OR_PROMISE_PATTERN.search(value):

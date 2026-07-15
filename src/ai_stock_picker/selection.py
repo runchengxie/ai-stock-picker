@@ -16,6 +16,7 @@ from .candidate_models import Candidate, CandidateUniverse
 from .candidates import load_candidate_universe
 from .commentary_validation import validate_customer_commentary
 from .contracts import (
+    TEMPERATURE,
     GenerationTrace,
     Market,
     ModelSelection,
@@ -23,7 +24,6 @@ from .contracts import (
     SelectionArtifact,
     StockPick,
     Style,
-    TEMPERATURE,
     TemporalStatus,
     validate_symbol,
 )
@@ -204,9 +204,7 @@ def _validate_pick_commentary(
     reasoning: str,
     risk_note: str,
 ) -> None:
-    commentary_locale: Market = (
-        "CN" if plan.response_language == "zh-CN" else "US"
-    )
+    commentary_locale: Market = "CN" if plan.response_language == "zh-CN" else "US"
     for field, value in (("reasoning", reasoning), ("risk_note", risk_note)):
         validate_customer_commentary(
             field,

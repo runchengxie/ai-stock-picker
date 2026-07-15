@@ -33,6 +33,23 @@ def _percentage(payload: dict[str, object], field: str) -> float:
     return float(value)
 
 
+def _coverage_percentage(
+    totals: dict[str, object],
+    *,
+    percentage_field: str,
+    covered_field: str,
+    total_field: str,
+) -> float:
+    """Read either the legacy percentage or current coverage.py count fields."""
+
+    percentage = totals.get(percentage_field)
+    if isinstance(percentage, int | float) and not isinstance(percentage, bool):
+        return float(percentage)
+    covered = _percentage(totals, covered_field)
+    total = _percentage(totals, total_field)
+    return 100.0 if total == 0 else covered * 100.0 / total
+
+
 def check_coverage(coverage_path: Path, baseline_path: Path) -> list[str]:
     """Return human-readable failures for coverage below baseline."""
 
@@ -42,11 +59,17 @@ def check_coverage(coverage_path: Path, baseline_path: Path) -> list[str]:
         raise ValueError("coverage JSON is missing totals")
     baseline = _read_object(baseline_path)
     actuals = {
-        "statements": _percentage(
-            cast(dict[str, object], totals), "percent_statements_covered"
+        "statements": _coverage_percentage(
+            cast(dict[str, object], totals),
+            percentage_field="percent_statements_covered",
+            covered_field="covered_lines",
+            total_field="num_statements",
         ),
-        "branches": _percentage(
-            cast(dict[str, object], totals), "percent_branches_covered"
+        "branches": _coverage_percentage(
+            cast(dict[str, object], totals),
+            percentage_field="percent_branches_covered",
+            covered_field="covered_branches",
+            total_field="num_branches",
         ),
     }
     failures: list[str] = []

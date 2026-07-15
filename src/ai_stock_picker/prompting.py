@@ -86,7 +86,8 @@ def build_prompt(
             ),
             (
                 "Do not disclose provider or model metadata, URLs, addresses, secrets, "
-                "trading instructions, price targets, return promises, or outside facts."
+                "trading instructions, price targets, return promises, or outside "
+                "facts."
             ),
             language_constraint,
         ],

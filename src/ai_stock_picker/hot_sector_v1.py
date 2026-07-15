@@ -66,9 +66,7 @@ def _validate_temporal_metadata(
         and generated_local.timetz().replace(tzinfo=None) < time(16, 0)
     ):
         raise ValueError("hot-sector generated_at precedes the completed EOD cutoff")
-    context: Literal[
-        "same_day_eod_generation", "post_observation_generation"
-    ] = (
+    context: Literal["same_day_eod_generation", "post_observation_generation"] = (
         "same_day_eod_generation"
         if generated_local.date() == observation_date
         else "post_observation_generation"

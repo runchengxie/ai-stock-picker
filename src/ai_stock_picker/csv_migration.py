@@ -98,9 +98,7 @@ def _required_alias(
         value = row.get(alias)
         if isinstance(value, str) and value.strip():
             return value.strip()
-    raise ValueError(
-        f"CSV row {index} is missing required field: {'/'.join(aliases)}"
-    )
+    raise ValueError(f"CSV row {index} is missing required field: {'/'.join(aliases)}")
 
 
 def _score(value: object, index: int) -> float:

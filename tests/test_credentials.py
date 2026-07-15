@@ -124,3 +124,91 @@ def test_owner_check_is_enforced(
     monkeypatch.setattr(os, "geteuid", lambda: os.getuid() + 1)
     with pytest.raises(CredentialFileError, match="current user"):
         load_api_key("CUSTOM_MODEL_API_KEY", path)
+
+
+def test_rejects_path_replacement_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = write_credentials(
+        tmp_path / "credentials.env",
+        "CUSTOM_MODEL_API_KEY=original\n",
+    )
+    replacement = write_credentials(
+        tmp_path / "replacement.env",
+        "CUSTOM_MODEL_API_KEY=replacement\n",
+    )
+    real_fstat = os.fstat
+    call_count = 0
+
+    def replacing_fstat(descriptor: int) -> os.stat_result:
+        nonlocal call_count
+        metadata = real_fstat(descriptor)
+        call_count += 1
+        if call_count == 1:
+            replacement.replace(path)
+        return metadata
+
+    monkeypatch.setattr(os, "fstat", replacing_fstat)
+
+    with pytest.raises(CredentialFileError, match="changed while reading"):
+        load_api_key("CUSTOM_MODEL_API_KEY", path)
+    assert path.read_text(encoding="utf-8").endswith("replacement\n")
+
+
+def test_rejects_same_inode_modified_during_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = write_credentials(
+        tmp_path / "credentials.env",
+        "CUSTOM_MODEL_API_KEY=original\n",
+    )
+    initial = path.stat()
+    real_read = os.read
+    modified = False
+
+    def modifying_read(descriptor: int, size: int) -> bytes:
+        nonlocal modified
+        if not modified:
+            modified = True
+            path.write_text("CUSTOM_MODEL_API_KEY=MODIFIED\n", encoding="utf-8")
+            os.utime(
+                path,
+                ns=(initial.st_atime_ns, initial.st_mtime_ns + 1_000_000_000),
+            )
+            current = path.stat()
+            assert (current.st_dev, current.st_ino, current.st_size) == (
+                initial.st_dev,
+                initial.st_ino,
+                initial.st_size,
+            )
+        return real_read(descriptor, size)
+
+    monkeypatch.setattr(os, "read", modifying_read)
+
+    with pytest.raises(CredentialFileError, match="changed while reading"):
+        load_api_key("CUSTOM_MODEL_API_KEY", path)
+
+
+def test_open_uses_nofollow_when_platform_supports_it(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    if not getattr(os, "O_NOFOLLOW", 0):
+        return
+    path = write_credentials(
+        tmp_path / "credentials.env",
+        "CUSTOM_MODEL_API_KEY=secret\n",
+    )
+    real_open = os.open
+    observed_flags: list[int] = []
+
+    def recording_open(open_path: str | os.PathLike[str], flags: int) -> int:
+        observed_flags.append(flags)
+        return real_open(open_path, flags)
+
+    monkeypatch.setattr(os, "open", recording_open)
+
+    assert load_api_key("CUSTOM_MODEL_API_KEY", path) == "secret"
+    assert observed_flags[0] & os.O_NOFOLLOW

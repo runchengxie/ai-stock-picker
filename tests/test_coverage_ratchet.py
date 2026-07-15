@@ -39,3 +39,26 @@ def test_coverage_ratchet_passes_and_fails(tmp_path: Path) -> None:
     )
     failures = module.check_coverage(coverage, baseline)
     assert len(failures) == 2
+
+
+def test_coverage_ratchet_reads_current_coverage_json(tmp_path: Path) -> None:
+    module = load_module()
+    coverage = tmp_path / "coverage.json"
+    baseline = tmp_path / "baseline.json"
+    coverage.write_text(
+        json.dumps(
+            {
+                "totals": {
+                    "covered_lines": 87,
+                    "num_statements": 100,
+                    "covered_branches": 67,
+                    "num_branches": 100,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    baseline.write_text(
+        json.dumps({"statements": 86.5, "branches": 66.3}), encoding="utf-8"
+    )
+    assert module.check_coverage(coverage, baseline) == []

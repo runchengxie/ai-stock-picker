@@ -13,9 +13,7 @@ from .candidate_models import Candidate, CandidateUniverse
 from .candidate_normalization import normalize_candidates
 
 
-def load_candidate_universe(
-    path: str | Path, *, as_of: date
-) -> CandidateUniverse:
+def load_candidate_universe(path: str | Path, *, as_of: date) -> CandidateUniverse:
     """Load a versioned manifest and return normalized candidates."""
 
     raw = read_candidate_manifest(path)

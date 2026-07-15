@@ -112,6 +112,19 @@ def test_provider_keys_do_not_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
         call_provider("prompt", resolve_provider_config("deepseek"), temperature=0.2)
 
 
+def test_explicit_empty_key_does_not_fallback_to_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "must-not-be-used")
+    with pytest.raises(ProviderError, match="DEEPSEEK_API_KEY"):
+        call_provider(
+            "prompt",
+            resolve_provider_config("deepseek"),
+            temperature=0.2,
+            api_key="",
+        )
+
+
 def test_credentials_are_not_copied_to_redirect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
