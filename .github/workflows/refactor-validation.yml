@@ -1,0 +1,76 @@
+name: Refactor validation
+
+on:
+  push:
+    branches: [codex/rename-package-contracts]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refactor-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/rename-package-contracts
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: Install supported Python versions
+        run: uv python install 3.10 3.12
+
+      - name: Remove obsolete namespace and temporary files
+        run: python scripts/dev/apply_refactor.py
+
+      - name: Refresh dependency lock
+        run: uv lock
+
+      - name: Install locked development environment
+        run: uv sync --locked --group dev
+
+      - name: Run unified local gate
+        run: uv run python scripts/dev/check.py
+
+      - name: Smoke-test wheel on Python 3.10 and 3.12
+        shell: bash
+        run: |
+          for version in 3.10 3.12; do
+            venv="$RUNNER_TEMP/wheel-$version"
+            uv venv --python "$version" "$venv"
+            uv pip install --python "$venv/bin/python" dist/*.whl
+            cd "$RUNNER_TEMP"
+            "$venv/bin/aipick" --help
+            "$venv/bin/aipick" pick \
+              --candidates "$GITHUB_WORKSPACE/examples/us_candidates.json" \
+              --as-of 2026-07-15 --top-n 1 --style quality \
+              --response-language en --provider deepseek --dry-run
+            "$venv/bin/aipick" pick \
+              --candidates "$GITHUB_WORKSPACE/examples/cn_candidates.json" \
+              --as-of 2026-07-15 --top-n 1 --style quality \
+              --response-language zh-CN --provider gemini --dry-run
+          done
+
+      - name: Check whitespace
+        run: git diff --check
+
+      - name: Commit validated refactor
+        shell: bash
+        run: |
+          git config user.name "runchengxie"
+          git config user.email "runchengxie@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No generated changes to commit"
+          else
+            git commit -m "refactor: complete provider-neutral pipeline"
+            git push origin HEAD:codex/rename-package-contracts
+          fi
