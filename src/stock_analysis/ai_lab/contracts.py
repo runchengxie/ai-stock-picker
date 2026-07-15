@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "1.0.0"
-PROMPT_VERSION = "2026-07-15.2"
+PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
@@ -22,6 +22,7 @@ InputContract = Literal[
 ]
 TemporalStatus = Literal["contemporaneous", "retrospective_simulation"]
 PointInTimeAssurance = Literal["signal_date_only", "unverified"]
+ReadablePromptVersion = Literal["2026-07-15.2", "2026-07-15.3"]
 
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
 _US_SYMBOL = re.compile(r"^[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?$")
@@ -117,7 +118,7 @@ class SelectionArtifact(BaseModel):
     generated_at: datetime
     provider: Provider
     model: str = Field(min_length=1, max_length=100)
-    prompt_version: Literal["2026-07-15.2"] = "2026-07-15.2"
+    prompt_version: ReadablePromptVersion = PROMPT_VERSION
     style: Style
     input_contract: InputContract
     temporal_status: TemporalStatus

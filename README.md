@@ -22,7 +22,7 @@ uv run aipick --help
 
 ## 先运行 dry-run
 
-dry-run 会校验候选池并生成 prompt 摘要，不访问模型，也不写入结果文件。
+dry-run 会校验候选池并生成 prompt 摘要，不访问模型、不读取凭据，也不写入结果文件。
 
 A 股示例：
 
@@ -72,7 +72,16 @@ uv run aipick us pick \
   --style quality
 ```
 
+跨仓调用可以改传 `--credential-file /absolute/path/aipick.env`。文件必须由当前用户
+拥有、权限精确为 `0600`、不超过 128 KiB，并用 UTF-8 `KEY=value` 行保存对应市场的
+key。解析器不调用 shell 或展开变量，只读取当前 provider 的专属 key；未传该参数时
+才读取进程环境变量。
+
 结果文件不会覆盖已有文件。重复运行时，请复用已有结果或指定新的输出路径。
+
+`reasoning` 和 `risk_note` 是仅基于候选字段的 AI interpretation，未经独立事实核验，
+不应包装成已核验事实或投资建议。每个句子可以使用获批的中英文自然标签引用候选字段，
+无需向客户暴露 snake_case 字段名。
 
 ## 详细文档
 

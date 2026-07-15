@@ -606,6 +606,10 @@ _PROMPT_FEATURES = {
     "volume_score",
 }
 
+_PROMPT_FEATURE_ALIASES = {
+    "risk_score": "intraday_stability_score",
+}
+
 
 def _safe_features(row: dict[str, object]) -> dict[str, object]:
     features: dict[str, object] = {}
@@ -613,12 +617,13 @@ def _safe_features(row: dict[str, object]) -> dict[str, object]:
         value = row.get(key)
         if value is None:
             continue
+        output_key = _PROMPT_FEATURE_ALIASES.get(key, key)
         if isinstance(value, str):
-            features[key] = value[:500]
+            features[output_key] = value[:500]
         elif isinstance(value, bool | int | float):
-            features[key] = value
+            features[output_key] = value
         elif isinstance(value, list):
-            features[key] = [str(item)[:100] for item in value[:20]]
+            features[output_key] = [str(item)[:100] for item in value[:20]]
     return features
 
 

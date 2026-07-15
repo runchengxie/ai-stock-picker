@@ -36,6 +36,21 @@ def test_gemini_never_falls_back_to_other_provider_key(
         call_gemini("prompt")
 
 
+def test_explicit_provider_key_does_not_fall_back_to_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "environment-key")
+    observed: list[str] = []
+
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        observed.append(str(request.get_header("Authorization")))
+        return b'{"choices":[{"message":{"content":"{\\"picks\\":[]}"}}]}'
+
+    call_deepseek("prompt", api_key="file-key", transport=transport)
+
+    assert observed == ["Bearer file-key"]
+
+
 def test_deepseek_uses_fixed_https_endpoint_and_parses_response(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

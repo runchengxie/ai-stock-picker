@@ -29,12 +29,11 @@ def call_deepseek(
     model: str = "deepseek-chat",
     timeout: float = 120,
     transport: Transport | None = None,
+    api_key: str | None = None,
 ) -> str:
-    """Call DeepSeek using only ``DEEPSEEK_API_KEY``."""
+    """Call DeepSeek using an explicit owner key or ``DEEPSEEK_API_KEY``."""
 
-    api_key = os.environ.get("DEEPSEEK_API_KEY", "").strip()
-    if not api_key:
-        raise ProviderError("DEEPSEEK_API_KEY is required for CN picks")
+    credential = _resolve_api_key(api_key, "DEEPSEEK_API_KEY", "CN")
     _validate_model(model)
     _validate_request(prompt, timeout)
     payload: dict[str, object] = {
@@ -55,7 +54,7 @@ def call_deepseek(
     body = _post_json(
         "https://api.deepseek.com/v1/chat/completions",
         payload,
-        credential_headers={"Authorization": f"Bearer {api_key}"},
+        credential_headers={"Authorization": f"Bearer {credential}"},
         timeout=timeout,
         transport=transport,
     )
@@ -73,12 +72,11 @@ def call_gemini(
     model: str = "gemini-2.5-flash",
     timeout: float = 120,
     transport: Transport | None = None,
+    api_key: str | None = None,
 ) -> str:
-    """Call Gemini using only ``GEMINI_API_KEY``."""
+    """Call Gemini using an explicit owner key or ``GEMINI_API_KEY``."""
 
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip()
-    if not api_key:
-        raise ProviderError("GEMINI_API_KEY is required for US picks")
+    credential = _resolve_api_key(api_key, "GEMINI_API_KEY", "US")
     _validate_model(model)
     _validate_request(prompt, timeout)
     encoded_model = urllib.parse.quote(model, safe="")
@@ -106,7 +104,7 @@ def call_gemini(
     body = _post_json(
         url,
         payload,
-        credential_headers={"x-goog-api-key": api_key},
+        credential_headers={"x-goog-api-key": credential},
         timeout=timeout,
         transport=transport,
     )
@@ -160,6 +158,14 @@ def _default_transport(request: urllib.request.Request, timeout: float) -> bytes
 def _validate_model(model: str) -> None:
     if _MODEL_NAME.fullmatch(model) is None:
         raise ProviderError("model name contains unsupported characters")
+
+
+def _resolve_api_key(explicit: str | None, variable: str, market: str) -> str:
+    value = explicit if explicit is not None else os.environ.get(variable, "")
+    credential = value.strip()
+    if not credential:
+        raise ProviderError(f"{variable} is required for {market} picks")
+    return credential
 
 
 def _validate_request(prompt: str, timeout: float) -> None:

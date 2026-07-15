@@ -2,11 +2,67 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import date, datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 
+from stock_analysis.ai_lab.selection import build_selection_plan, create_selection
 from stock_analysis.app.cli import app, create_parser, main
+
+
+def _write_v2_selection(candidates: Path, destination: Path) -> dict[str, Any]:
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=candidates,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    response = json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": "600000.SH",
+                    "confidence_score": 8,
+                    "reasoning": "综合候选评分支持该候选排序。",
+                    "risk_note": "综合候选评分仍有信息边界。",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+    artifact = create_selection(
+        plan,
+        response,
+        generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
+    )
+    payload = artifact.model_dump(mode="json")
+    payload["prompt_version"] = "2026-07-15.2"
+    payload["lineage"]["prompt_sha256"] = "a" * 64
+    payload["picks"][0]["reasoning"] = (
+        "候选特征显示高流动性、强趋势和多重主题支撑，质量较高。"
+    )
+    payload["picks"][0]["risk_note"] = "短期涨幅较大，需注意回调风险。"
+    destination.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return payload
+
+
+def _tamper_v2_payload(payload: dict[str, Any], case: str) -> None:
+    if case == "input_hash":
+        payload["lineage"]["input_sha256"] = "0" * 64
+    elif case == "membership":
+        payload["picks"][0]["symbol"] = "601398.SH"
+    elif case == "enrichment":
+        payload["picks"][0]["name"] = "伪造银行"
+    elif case == "url":
+        payload["picks"][0]["reasoning"] = "候选特征详见 https://example.com。"
+    elif case == "trading":
+        payload["picks"][0]["reasoning"] = "候选特征支持建议买入并增配。"
+    elif case == "provider":
+        payload["picks"][0]["reasoning"] = "候选特征由供应商 DëepSeek 输出。"
+    else:
+        payload["picks"][0]["reasoning"] = "Candidate features support the rank."
 
 
 def test_root_help_lists_only_two_markets(
@@ -20,7 +76,7 @@ def test_root_help_lists_only_two_markets(
     assert "pipeline" not in output
 
 
-def test_market_parsers_expose_only_pick() -> None:
+def test_market_parsers_expose_only_pick_and_validation() -> None:
     parser = create_parser()
     for market in ("us", "cn"):
         with pytest.raises(SystemExit) as exit_info:
@@ -40,6 +96,7 @@ def test_dry_run_is_network_free_and_reports_hashes(
     fixture_name: str,
     style: str,
     request: pytest.FixtureRequest,
+    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest = request.getfixturevalue(fixture_name)
@@ -56,6 +113,8 @@ def test_dry_run_is_network_free_and_reports_hashes(
             "2",
             "--style",
             style,
+            "--credential-file",
+            str(tmp_path / "not-read-during-dry-run.env"),
             "--dry-run",
         ]
     )
@@ -85,8 +144,8 @@ def test_live_path_writes_validated_artifact(
                 {
                     "symbol": "600000.SH",
                     "confidence_score": 8,
-                    "reasoning": "候选特征支持该排序",
-                    "risk_note": "主要风险来自候选特征波动",
+                    "reasoning": "依据 score 候选字段进行相对排序",
+                    "risk_note": "仅依据 score，风险解读仍有信息边界",
                 }
             ]
         }
@@ -118,6 +177,233 @@ def test_live_path_writes_validated_artifact(
     assert payload["strict_point_in_time"] is False
     assert payload["eligible_as_oos_evidence"] is False
     assert "validated picks" in capsys.readouterr().out
+
+    assert (
+        main(
+            [
+                "cn",
+                "validate",
+                "--selection",
+                str(output),
+                "--candidates",
+                str(cn_manifest),
+            ]
+        )
+        == 0
+    )
+    validation = json.loads(capsys.readouterr().out)
+    assert validation == {
+        "commentary_policy_revalidated": True,
+        "market": "CN",
+        "picks": 1,
+        "prompt_hash_revalidated": True,
+        "prompt_version": "2026-07-15.3",
+        "response_sha256_verification": "format_only_raw_response_unavailable",
+        "selection_as_of": "2026-07-15",
+        "valid": True,
+        "validation_profile": "current_full",
+    }
+
+
+def test_validate_rejects_market_mismatch(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": "600000.SH",
+                    "confidence_score": 8,
+                    "reasoning": "综合候选评分支持该候选排序。",
+                    "risk_note": "综合候选评分仍有信息边界。",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "stock_analysis.ai_lab.selection.call_deepseek",
+        lambda prompt, *, model, timeout: response,
+    )
+    output = tmp_path / "cn-selection.json"
+    assert (
+        main(
+            [
+                "cn",
+                "pick",
+                "--candidates",
+                str(cn_manifest),
+                "--output",
+                str(output),
+                "--as-of",
+                "2026-07-15",
+                "--top-n",
+                "1",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+
+    assert (
+        main(
+            [
+                "us",
+                "validate",
+                "--selection",
+                str(output),
+                "--candidates",
+                str(cn_manifest),
+            ]
+        )
+        == 2
+    )
+    assert "does not match CLI market" in capsys.readouterr().err
+
+
+def test_validate_rechecks_commentary_and_candidate_lineage(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": "600000.SH",
+                    "confidence_score": 8,
+                    "reasoning": "综合候选评分支持该候选排序。",
+                    "risk_note": "综合候选评分仍有信息边界。",
+                }
+            ]
+        }
+    )
+    monkeypatch.setattr(
+        "stock_analysis.ai_lab.selection.call_deepseek",
+        lambda prompt, *, model, timeout: response,
+    )
+    output = tmp_path / "selection.json"
+    assert (
+        main(
+            [
+                "cn",
+                "pick",
+                "--candidates",
+                str(cn_manifest),
+                "--output",
+                str(output),
+                "--as-of",
+                "2026-07-15",
+                "--top-n",
+                "1",
+            ]
+        )
+        == 0
+    )
+    capsys.readouterr()
+    original = json.loads(output.read_text(encoding="utf-8"))
+    cases = {
+        "commentary": lambda payload: payload["picks"][0].update(
+            reasoning="综合候选评分建议买入并访问 https://example.com。"
+        ),
+        "input-hash": lambda payload: payload["lineage"].update(input_sha256="0" * 64),
+    }
+    for name, tamper in cases.items():
+        payload = json.loads(json.dumps(original))
+        tamper(payload)
+        tampered = tmp_path / f"tampered-{name}.json"
+        tampered.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+        assert (
+            main(
+                [
+                    "cn",
+                    "validate",
+                    "--selection",
+                    str(tampered),
+                    "--candidates",
+                    str(cn_manifest),
+                ]
+            )
+            == 2
+        )
+        assert "aipick: error:" in capsys.readouterr().err
+
+
+def test_validate_v2_uses_read_only_legacy_profile(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    selection = tmp_path / "production-v2-selection.json"
+    _write_v2_selection(cn_manifest, selection)
+    original = selection.read_bytes()
+
+    code = main(
+        [
+            "cn",
+            "validate",
+            "--selection",
+            str(selection),
+            "--candidates",
+            str(cn_manifest),
+        ]
+    )
+
+    assert code == 0
+    assert selection.read_bytes() == original
+    assert json.loads(capsys.readouterr().out) == {
+        "commentary_policy_revalidated": False,
+        "market": "CN",
+        "picks": 1,
+        "prompt_hash_revalidated": False,
+        "prompt_version": "2026-07-15.2",
+        "response_sha256_verification": "format_only_raw_response_unavailable",
+        "selection_as_of": "2026-07-15",
+        "valid": True,
+        "validation_profile": "legacy_read_only",
+    }
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        "input_hash",
+        "membership",
+        "enrichment",
+        "url",
+        "trading",
+        "provider",
+        "language",
+    ],
+)
+def test_validate_v2_rejects_candidate_or_commentary_mutations(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    case: str,
+) -> None:
+    selection = tmp_path / f"tampered-v2-{case}.json"
+    payload = _write_v2_selection(cn_manifest, selection)
+    _tamper_v2_payload(payload, case)
+    selection.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    code = main(
+        [
+            "cn",
+            "validate",
+            "--selection",
+            str(selection),
+            "--candidates",
+            str(cn_manifest),
+        ]
+    )
+
+    assert code == 2
+    assert "aipick: error:" in capsys.readouterr().err
 
 
 def test_live_path_requires_output(
@@ -173,6 +459,67 @@ def test_live_path_refuses_existing_output_before_provider_call(
     assert code == 2
     assert "already exists" in capsys.readouterr().err
     assert output.read_text(encoding="utf-8") == "existing receipt\n"
+
+
+def test_live_path_uses_market_specific_key_from_credential_file(
+    cn_manifest: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": "600000.SH",
+                    "confidence_score": 8,
+                    "reasoning": "依据 score 候选字段进行相对排序",
+                    "risk_note": "仅依据 score，风险解读仍有信息边界",
+                }
+            ]
+        }
+    )
+    credential_file = tmp_path / "owner.env"
+    credential_file.write_text(
+        "GEMINI_API_KEY=must-not-be-used\nDEEPSEEK_API_KEY=owner-key\n",
+        encoding="utf-8",
+    )
+    credential_file.chmod(0o600)
+    observed: list[str | None] = []
+
+    def fake_deepseek(
+        prompt: str,
+        *,
+        model: str,
+        timeout: float,
+        api_key: str | None = None,
+    ) -> str:
+        del prompt, model, timeout
+        observed.append(api_key)
+        return response
+
+    monkeypatch.setattr("stock_analysis.ai_lab.selection.call_deepseek", fake_deepseek)
+    output = tmp_path / "selection.json"
+
+    code = main(
+        [
+            "cn",
+            "pick",
+            "--candidates",
+            str(cn_manifest),
+            "--output",
+            str(output),
+            "--as-of",
+            "2026-07-15",
+            "--top-n",
+            "1",
+            "--credential-file",
+            str(credential_file),
+        ]
+    )
+
+    assert code == 0
+    assert observed == ["owner-key"]
+    assert output.is_file()
 
 
 @pytest.mark.parametrize(
