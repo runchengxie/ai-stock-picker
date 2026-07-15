@@ -28,7 +28,7 @@ jobs:
       - name: Install supported Python versions
         run: uv python install 3.10 3.12
 
-      - name: Remove obsolete namespace and temporary files
+      - name: Remove obsolete namespace
         run: python scripts/dev/apply_refactor.py
 
       - name: Refresh dependency lock
@@ -37,8 +37,29 @@ jobs:
       - name: Install locked development environment
         run: uv sync --locked --group dev
 
-      - name: Run unified local gate
-        run: uv run python scripts/dev/check.py
+      - name: Check dependency lock
+        run: uv lock --check
+
+      - name: Ruff lint
+        run: uv run ruff check .
+
+      - name: Ruff format
+        run: uv run ruff format --check .
+
+      - name: ty
+        run: uv run ty check
+
+      - name: Tests and coverage report
+        run: uv run pytest
+
+      - name: Coverage ratchet
+        run: uv run python scripts/dev/coverage_ratchet.py
+
+      - name: Maintainability ratchet
+        run: uv run python scripts/dev/maintainability_metrics.py --ratchet
+
+      - name: Build wheel and source distribution
+        run: uv run python -m build
 
       - name: Smoke-test wheel on Python 3.10 and 3.12
         shell: bash
@@ -61,6 +82,11 @@ jobs:
 
       - name: Check whitespace
         run: git diff --check
+
+      - name: Remove temporary validation files
+        run: |
+          rm -f .github/workflows/refactor-validation.yml
+          rm -f scripts/dev/apply_refactor.py
 
       - name: Commit validated refactor
         shell: bash
