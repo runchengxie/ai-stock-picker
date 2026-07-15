@@ -29,6 +29,11 @@ aipick us pick
 10. 已存在的结果文件不能被覆盖。
 11. A 股的 `reasoning` 和 `risk_note` 必须包含中文。
 12. 输出不能声称具备严格时点证明或样本外证据资格。
+13. `reasoning` 和 `risk_note` 的每个句子必须以字段名或获批自然标签引用实际候选字段，
+    并拒绝 confusable、URL/IP/邮件、系统元数据、secret、交易指令、语义颠倒及外部事实。
+14. prompt 中的 `risk_score` 只能投影为 `intraday_stability_score`，语义为值越高越稳定。
+15. 显式凭据文件必须以安全文件描述符读取，要求当前用户、普通文件、`0600`、不超过
+    128 KiB，读取前后元数据一致，且只能返回当前 provider 的专属 key。
 
 ## 主要目录
 
@@ -37,7 +42,10 @@ src/stock_analysis/
 ├── app/cli.py
 └── ai_lab/
     ├── candidates.py
+    ├── commentary_contract.py
+    ├── commentary_validation.py
     ├── contracts.py
+    ├── credentials.py
     ├── providers.py
     └── selection.py
 
@@ -50,7 +58,10 @@ docs/
 主要职责：
 
 - `candidates.py` 读取、校验和归一化候选池
+- `commentary_contract.py` 定义客户文案自然标签、语义和 grounding 策略
+- `commentary_validation.py` 对逐句 grounding、候选值和客户文案安全边界 fail closed
 - `contracts.py` 定义模型输出和结果文件
+- `credentials.py` 安全读取显式 provider 凭据文件
 - `providers.py` 调用 DeepSeek 与 Gemini
 - `selection.py` 构建 prompt、校验结果并写入文件
 - `app/cli.py` 处理命令行参数和错误输出

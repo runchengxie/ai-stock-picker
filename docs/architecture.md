@@ -76,6 +76,11 @@ CLI 应保持轻量，不在此处实现候选契约或 provider 解析。
 
 Pydantic 模型使用 strict、extra forbid 和 frozen 配置，避免隐式类型转换和结果写入后的意外修改。
 
+### `stock_analysis.ai_lab.credentials`
+
+负责安全读取显式传入的 owner 凭据文件，并且只返回 selection plan 对应 provider 的
+专属 key。
+
 ### `stock_analysis.ai_lab.providers`
 
 负责：
@@ -92,6 +97,13 @@ A 股只使用 `DEEPSEEK_API_KEY`。
 美股只使用 `GEMINI_API_KEY`。
 
 凭据放入不可转发 header，provider 重定向不会携带密钥。
+
+显式传入 `--credential-file` 时，`stock_analysis.ai_lab.credentials` 使用安全文件描述符
+读取普通文件：要求当前用户所有、权限精确为 `0600`、大小不超过 128 KiB，并拒绝
+符号链接。它只解析 UTF-8 literal `KEY=value`，不执行 shell、不展开 `$()`，并按
+selection plan 的 provider 只返回 `DEEPSEEK_API_KEY` 或 `GEMINI_API_KEY`。未显式传
+文件时，provider 才回退读取自己的进程环境变量。读取前后还会比较文件的
+device/inode/size/mtime/ctime 快照；读取期间即使同 inode 原地改写也会失败。
 
 ### `stock_analysis.ai_lab.selection`
 
@@ -115,7 +127,7 @@ cli
   ↓
 selection
   ↓
-candidates + contracts + providers
+candidates + contracts + credentials + providers
 ```
 
 约束：

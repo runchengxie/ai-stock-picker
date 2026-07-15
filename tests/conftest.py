@@ -18,6 +18,7 @@ def _default_rows(market: str) -> list[dict[str, Any]]:
                 "source_topics": ["银行"],
                 "source_concepts": [],
                 "trend_score": 0.8,
+                "risk_score": 0.85,
             },
             {
                 "ts_code": "000001.SZ",
@@ -27,6 +28,7 @@ def _default_rows(market: str) -> list[dict[str, Any]]:
                 "source_topics": ["金融科技"],
                 "source_concepts": [],
                 "trend_score": 0.7,
+                "risk_score": 0.75,
             },
             {
                 "ts_code": "430047.BJ",
@@ -36,6 +38,7 @@ def _default_rows(market: str) -> list[dict[str, Any]]:
                 "source_topics": ["医药"],
                 "source_concepts": [],
                 "trend_score": 0.6,
+                "risk_score": 0.65,
             },
         ]
     return [
