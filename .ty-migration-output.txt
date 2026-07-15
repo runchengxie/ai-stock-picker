@@ -1,0 +1,97 @@
+error[unresolved-import]: Cannot resolve imported module `tomllib`
+  --> scripts/dev/maintainability_metrics.py:21:12
+   |
+21 |     import tomllib
+   |            ^^^^^^^
+   |
+info: The stdlib module `tomllib` is only available on Python 3.11+
+info: Python 3.10 was assumed when resolving modules
+  --> pyproject.toml:47:18
+   |
+47 | python-version = "3.10"
+   |                  ^^^^^^ Python version configuration
+   |
+
+error[unresolved-import]: Cannot resolve imported module `tomli`
+  --> scripts/dev/maintainability_metrics.py:23:12
+   |
+23 |     import tomli as tomllib
+   |            ^^^^^^^^^^^^^^^^
+   |
+info: Searched in the following paths during module resolution:
+info:   1. /home/runner/work/ai-stock-picker/ai-stock-picker/src (first-party code)
+info:   2. /home/runner/work/ai-stock-picker/ai-stock-picker/scripts (first-party code)
+info:   3. /home/runner/work/ai-stock-picker/ai-stock-picker/tests (first-party code)
+info:   4. vendored://stdlib (stdlib typeshed stubs vendored by ty)
+info:   5. /home/runner/work/ai-stock-picker/ai-stock-picker/.venv/lib/python3.12/site-packages (site-packages)
+info:   6. /home/runner/work/ai-stock-picker/ai-stock-picker/.venv/lib64/python3.12/site-packages (site-packages)
+info: make sure your Python environment is properly configured: https://docs.astral.sh/ty/modules/#python-environment
+
+error[unresolved-attribute]: Object of type `object` has no attribute `strip`
+   --> src/stock_analysis/ai_lab/candidates.py:564:22
+    |
+564 |             clean = [item.strip() for item in value if item.strip()]
+    |                      ^^^^^^^^^^
+    |
+
+error[unresolved-attribute]: Object of type `object` has no attribute `strip`
+   --> src/stock_analysis/ai_lab/candidates.py:564:56
+    |
+564 |             clean = [item.strip() for item in value if item.strip()]
+    |                                                        ^^^^^^^^^^
+    |
+
+error[invalid-return-type]: Return type does not match returned value
+   --> src/stock_analysis/ai_lab/providers.py:172:60
+    |
+172 | def _list_field(payload: dict[str, object], field: str) -> list[object]:
+    |                                                            ------------ Expected `list[object]` because of return type
+173 |     value = payload.get(field)
+174 |     if not isinstance(value, list):
+175 |         raise TypeError(field)
+176 |     return value
+    |            ^^^^^ expected `list[object]`, found `Top[list[Unknown]]`
+    |
+
+error[invalid-argument-type]: Argument to function `build_selection_plan` is incorrect
+   --> tests/test_selection.py:133:13
+    |
+133 |             market=market,  # type: ignore[arg-type]
+    |             ^^^^^^^^^^^^^ Expected `Literal["CN", "US"]`, found `str`
+    |
+info: Function defined here
+  --> src/stock_analysis/ai_lab/selection.py:76:5
+   |
+76 | def build_selection_plan(
+   |     ^^^^^^^^^^^^^^^^^^^^
+77 |     *,
+78 |     market: Market,
+   |     -------------- Parameter declared here
+   |
+
+error[invalid-argument-type]: Argument to function `build_selection_plan` is incorrect
+   --> tests/test_selection.py:137:13
+    |
+137 |             style=style,  # type: ignore[arg-type]
+    |             ^^^^^^^^^^^ Expected `Literal["momentum", "quality", "growth"] | None`, found `str`
+    |
+info: Function defined here
+  --> src/stock_analysis/ai_lab/selection.py:76:5
+   |
+76 | def build_selection_plan(
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+  ::: src/stock_analysis/ai_lab/selection.py:82:5
+   |
+82 |     style: Style | None = None,
+   |     -------------------------- Parameter declared here
+   |
+
+error[invalid-assignment]: Property `temporal_status` defined in `SelectionArtifact` is read-only
+   --> tests/test_selection.py:491:9
+    |
+491 |         artifact.temporal_status = "retrospective_simulation"
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^
+    |
+
+Found 8 diagnostics
