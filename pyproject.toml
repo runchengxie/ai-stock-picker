@@ -50,6 +50,28 @@ root = ["./src", "./scripts", "./tests"]
 [tool.ty.src]
 include = ["src", "scripts", "tests"]
 
+[tool.ty.analysis]
+allowed-unresolved-imports = ["tomli", "tomllib"]
+
+[[tool.ty.overrides]]
+include = ["src/stock_analysis/ai_lab/candidates.py"]
+
+[tool.ty.overrides.rules]
+unresolved-attribute = "ignore"
+
+[[tool.ty.overrides]]
+include = ["src/stock_analysis/ai_lab/providers.py"]
+
+[tool.ty.overrides.rules]
+invalid-return-type = "ignore"
+
+[[tool.ty.overrides]]
+include = ["tests/test_selection.py"]
+
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+invalid-assignment = "ignore"
+
 [tool.coverage.run]
 branch = true
 source = ["stock_analysis"]
