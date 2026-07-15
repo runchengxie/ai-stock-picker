@@ -1,57 +1,52 @@
-# Byte-code and cache
+# Python cache
 __pycache__/
-*.pyc
+*.py[cod]
 
-# Virtual environments (common patterns)
+# Virtual environments
 .venv/
 venv/
 env/
-stock-analysis-env/
 
-# Build artifacts and packaging
+# Build and packaging
 build/
 dist/
 *.egg-info/
 
-# --- Project-specific ---
-# Data files
+# Project data and generated output
 /data/
-
-# Generated output files
 outputs/
 
-# Debugging or temporary files
-full_project_source.txt
-strategy_full_project_source.txt
+# Local environment variables
+.env
+.env.local
+.envrc
 
-# --- Generated Documents ---
-# Ignore binary/compiled document formats. Track the source (.md, .tex) instead.
-*.pdf
-*.docx
-*.xlsx
-
-# --- Editor & IDE Specific ---
-
-# Visual Studio Code
+# Local tools and editors
+.codex/
 .vscode/
 !.vscode/settings.json
 !.vscode/launch.json
 !.vscode/extensions.json
 !.vscode/tasks.json
 
-# Codex CLI
-# AGENTS.md
-.codex/
-
-# Environment variables
-.env
-
-# Ignore direnv environment file
-.envrc
-
-# Unit test / coverage reports
+# Test, type-check and coverage cache
+.pytest_cache/
+.mypy_cache/
+.pyright/
+.ruff_cache/
 .coverage
+.coverage.*
+htmlcov/
 
-# Configuration files
-# Ignore actual config file, keep template in version control
-config/config.yaml
+# Temporary repository exports
+full_project_source.txt
+strategy_full_project_source.txt
+
+# Generated binary documents
+*.pdf
+*.docx
+*.xlsx
+
+# Operating system files
+.DS_Store
+Thumbs.db
