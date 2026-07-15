@@ -53,13 +53,6 @@ include = ["src", "scripts", "tests"]
 [tool.ty.analysis]
 allowed-unresolved-imports = ["tomli", "tomllib"]
 
-[[tool.ty.overrides]]
-include = ["tests/test_selection.py"]
-
-[tool.ty.overrides.rules]
-invalid-argument-type = "ignore"
-invalid-assignment = "ignore"
-
 [tool.coverage.run]
 branch = true
 source = ["ai_stock_picker"]
@@ -69,6 +62,6 @@ show_missing = true
 skip_covered = true
 
 [tool.pytest.ini_options]
-addopts = "--cov=ai_stock_picker --cov-report=term-missing --cov-fail-under=75"
+addopts = "--cov=ai_stock_picker --cov-report=term-missing --cov-report=json:.coverage.json"
 testpaths = ["tests"]
 markers = ["unit: fast, isolated tests"]
