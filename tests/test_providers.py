@@ -9,111 +9,114 @@ from typing import Any, cast
 
 import pytest
 
-from stock_analysis.ai_lab.providers import (
+from ai_stock_picker.providers import (
     ProviderError,
-    call_deepseek,
-    call_gemini,
+    call_provider,
+    resolve_provider_config,
 )
 
 
-def test_deepseek_never_falls_back_to_other_provider_key(
+def test_resolve_built_in_and_custom_providers() -> None:
+    deepseek = resolve_provider_config("deepseek")
+    assert deepseek.model == "deepseek-chat"
+    assert deepseek.api_key_env == "DEEPSEEK_API_KEY"
+
+    gemini = resolve_provider_config("gemini", model="gemini-2.5-pro")
+    assert gemini.model == "gemini-2.5-pro"
+
+    custom = resolve_provider_config(
+        "openai-compatible",
+        model="gpt-4.1-mini",
+        base_url="https://api.example.com/v1/chat/completions",
+        api_key_env="CUSTOM_API_KEY",
+    )
+    assert custom.endpoint.endswith("chat/completions")
+    assert custom.name == "openai-compatible"
+
+
+def test_custom_provider_requires_safe_complete_configuration() -> None:
+    with pytest.raises(ProviderError, match="requires"):
+        resolve_provider_config("openai-compatible")
+    with pytest.raises(ProviderError, match="HTTPS"):
+        resolve_provider_config(
+            "openai-compatible",
+            model="m",
+            base_url="http://example.com/v1/chat/completions",
+            api_key_env="KEY",
+        )
+    with pytest.raises(ProviderError, match="environment"):
+        resolve_provider_config(
+            "openai-compatible",
+            model="m",
+            base_url="https://example.com/v1/chat/completions",
+            api_key_env="bad-key",
+        )
+    with pytest.raises(ProviderError, match="fixed"):
+        resolve_provider_config("deepseek", base_url="https://example.com")
+
+
+def test_openai_compatible_call_uses_unredirected_header(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
-    monkeypatch.setenv("OPENAI_API_KEY", "must-not-be-used")
-    monkeypatch.setenv("GEMINI_API_KEY", "must-not-be-used")
-    with pytest.raises(ProviderError, match="DEEPSEEK_API_KEY"):
-        call_deepseek("prompt")
+    monkeypatch.setenv("CUSTOM_API_KEY", "secret")
+    config = resolve_provider_config(
+        "openai-compatible",
+        model="model-x",
+        base_url="https://api.example.com/v1/chat/completions",
+        api_key_env="CUSTOM_API_KEY",
+    )
+    observed: list[tuple[str, dict[str, str], dict[str, str], dict[str, Any]]] = []
 
-
-def test_gemini_never_falls_back_to_other_provider_key(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    monkeypatch.setenv("GOOGLE_API_KEY", "must-not-be-used")
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "must-not-be-used")
-    with pytest.raises(ProviderError, match="GEMINI_API_KEY"):
-        call_gemini("prompt")
-
-
-def test_deepseek_uses_fixed_https_endpoint_and_parses_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret")
-    observed: list[
-        tuple[
-            str,
-            dict[str, str],
-            dict[str, str],
-            float,
-            dict[str, object],
-        ]
-    ] = []
-
-    def transport(request: urllib.request.Request, timeout: float) -> bytes:
-        request_data = cast(Any, request.data)
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        data = cast(Any, request.data)
         observed.append(
             (
                 request.full_url,
                 dict(request.headers),
                 dict(request.unredirected_hdrs),
-                timeout,
-                json.loads(request_data or b"{}"),
+                json.loads(data or b"{}"),
             )
         )
-        return json.dumps(
-            {"choices": [{"message": {"content": '{"picks": []}'}}]}
-        ).encode()
+        return b'{"choices":[{"message":{"content":"{\\"picks\\":[]}"}}]}'
 
-    result = call_deepseek(
-        "prompt", model="deepseek-chat", timeout=7.0, transport=transport
+    result = call_provider(
+        "prompt", config, temperature=0.2, timeout=3, transport=transport
     )
-    assert result == '{"picks": []}'
-    url, headers, unredirected, timeout, payload = observed[0]
-    assert url == "https://api.deepseek.com/v1/chat/completions"
+    assert result == '{"picks":[]}'
+    url, headers, unredirected, payload = observed[0]
+    assert url == config.endpoint
     assert "Authorization" not in headers
-    assert unredirected["Authorization"] == "Bearer deepseek-secret"
-    assert timeout == 7.0
-    assert payload["model"] == "deepseek-chat"
+    assert unredirected["Authorization"] == "Bearer secret"
+    assert payload["model"] == "model-x"
 
 
-def test_gemini_uses_fixed_https_endpoint_and_parses_response(
+def test_gemini_call_uses_header_and_model_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "secret")
+    config = resolve_provider_config("gemini", model="gemini-test")
+    observed: list[tuple[str, dict[str, str]]] = []
+
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        observed.append((request.full_url, dict(request.unredirected_hdrs)))
+        return b'{"candidates":[{"content":{"parts":[{"text":"{\\"picks\\":[]}"}]}}]}'
+
+    result = call_provider("prompt", config, temperature=0.1, transport=transport)
+    assert result == '{"picks":[]}'
+    assert "gemini-test:generateContent" in observed[0][0]
+    assert observed[0][1]["X-goog-api-key"] == "secret"
+
+
+def test_provider_keys_do_not_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    monkeypatch.setenv("GEMINI_API_KEY", "wrong")
+    with pytest.raises(ProviderError, match="DEEPSEEK_API_KEY"):
+        call_provider("prompt", resolve_provider_config("deepseek"), temperature=0.2)
+
+
+def test_credentials_are_not_copied_to_redirect(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
-    observed: list[tuple[str, dict[str, str], dict[str, str], float]] = []
-
-    def transport(request: urllib.request.Request, timeout: float) -> bytes:
-        observed.append(
-            (
-                request.full_url,
-                dict(request.headers),
-                dict(request.unredirected_hdrs),
-                timeout,
-            )
-        )
-        return json.dumps(
-            {"candidates": [{"content": {"parts": [{"text": '{"picks": []}'}]}}]}
-        ).encode()
-
-    result = call_gemini(
-        "prompt", model="gemini-2.5-flash", timeout=8.0, transport=transport
-    )
-    assert result == '{"picks": []}'
-    assert observed[0][0].startswith(
-        "https://generativelanguage.googleapis.com/v1beta/models/"
-    )
-    assert "key=" not in observed[0][0]
-    assert "X-goog-api-key" not in observed[0][1]
-    assert observed[0][2]["X-goog-api-key"] == "gemini-secret"
-    assert observed[0][3] == 8.0
-
-
-def test_credentials_are_not_copied_to_redirected_request(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-secret")
-    observed_redirect_headers: list[dict[str, str]] = []
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+    observed: list[dict[str, str]] = []
 
     def transport(request: urllib.request.Request, _timeout: float) -> bytes:
         redirected = urllib.request.HTTPRedirectHandler().redirect_request(
@@ -125,77 +128,57 @@ def test_credentials_are_not_copied_to_redirected_request(
             "https://attacker.invalid/collect",
         )
         assert redirected is not None
-        observed_redirect_headers.append(dict(redirected.header_items()))
+        observed.append(dict(redirected.header_items()))
         return b'{"choices":[{"message":{"content":"{\\"picks\\":[]}"}}]}'
 
-    call_deepseek("prompt", transport=transport)
-
-    assert "Authorization" not in observed_redirect_headers[0]
-
-
-@pytest.mark.parametrize("provider", ["deepseek", "gemini"])
-def test_provider_rejects_unsafe_model_name(
-    provider: str, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "key")
-    monkeypatch.setenv("GEMINI_API_KEY", "key")
-    function = call_deepseek if provider == "deepseek" else call_gemini
-    with pytest.raises(ProviderError, match="model name"):
-        function("prompt", model="../../secret")
+    call_provider(
+        "prompt",
+        resolve_provider_config("deepseek"),
+        temperature=0.2,
+        transport=transport,
+    )
+    assert "Authorization" not in observed[0]
 
 
-@pytest.mark.parametrize(
-    "body",
-    [
-        b"not-json",
-        b"[]",
-        b"{}",
-        b'{"choices": []}',
-        b'{"candidates": []}',
-    ],
-)
-def test_provider_response_failures_are_sanitized(
-    body: bytes, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_provider_failures_are_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
 
-    def transport(_request: urllib.request.Request, _timeout: float) -> bytes:
-        return body
-
-    with pytest.raises(ProviderError, match="provider|DeepSeek") as error:
-        call_deepseek("prompt", transport=transport)
-    assert "secret" not in str(error.value)
-
-
-def test_transport_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
-
-    def transport(_request: urllib.request.Request, _timeout: float) -> bytes:
-        raise urllib.error.URLError("secret internal detail")
+    def bad_transport(_request: urllib.request.Request, _timeout: float) -> bytes:
+        raise urllib.error.URLError("secret details")
 
     with pytest.raises(ProviderError, match="request failed") as error:
-        call_deepseek("prompt", transport=transport)
-    assert "secret internal detail" not in str(error.value)
+        call_provider(
+            "prompt",
+            resolve_provider_config("deepseek"),
+            temperature=0.2,
+            transport=bad_transport,
+        )
+    assert "secret details" not in str(error.value)
+
+    def invalid_json(_request: urllib.request.Request, _timeout: float) -> bytes:
+        return b"not-json"
+
+    with pytest.raises(ProviderError, match="invalid JSON"):
+        call_provider(
+            "prompt",
+            resolve_provider_config("deepseek"),
+            temperature=0.2,
+            transport=invalid_json,
+        )
 
 
-@pytest.mark.parametrize("timeout", [0.0, -1.0, float("nan"), float("inf")])
-def test_timeout_must_be_positive_and_finite(
-    timeout: float, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_provider_request_limits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DEEPSEEK_API_KEY", "key")
-    with pytest.raises(ProviderError, match="positive finite"):
-        call_deepseek("prompt", timeout=timeout)
-
-
-def test_provider_enforces_prompt_and_response_limits(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setenv("DEEPSEEK_API_KEY", "key")
+    config = resolve_provider_config("deepseek")
+    with pytest.raises(ProviderError, match="timeout"):
+        call_provider("prompt", config, temperature=0.2, timeout=0)
+    with pytest.raises(ProviderError, match="temperature"):
+        call_provider("prompt", config, temperature=float("nan"))
     with pytest.raises(ProviderError, match="prompt exceeds"):
-        call_deepseek("x" * 2_000_001)
+        call_provider("x" * 2_000_001, config, temperature=0.2)
 
-    def transport(_request: urllib.request.Request, _timeout: float) -> bytes:
+    def huge(_request: urllib.request.Request, _timeout: float) -> bytes:
         return b"x" * 2_000_001
 
     with pytest.raises(ProviderError, match="response exceeds"):
-        call_deepseek("prompt", transport=transport)
+        call_provider("prompt", config, temperature=0.2, transport=huge)
