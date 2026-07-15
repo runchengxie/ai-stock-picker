@@ -2,20 +2,22 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from hashlib import sha256
 from pathlib import Path
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
 
-from .candidate_models import CandidateUniverse
+from .candidate_models import Candidate, CandidateUniverse
 from .candidates import load_candidate_universe
+from .commentary_validation import validate_customer_commentary
 from .contracts import (
     GenerationTrace,
+    Market,
     ModelSelection,
     ResponseLanguage,
     SelectionArtifact,
@@ -25,6 +27,7 @@ from .contracts import (
     TemporalStatus,
     validate_symbol,
 )
+from .credentials import load_api_key
 from .prompting import build_prompt
 from .providers import (
     ProviderConfig,
@@ -37,7 +40,6 @@ ProviderCaller = Callable[[str, ProviderConfig, float, float], str]
 
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
-_CJK_IDEOGRAPH = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +53,15 @@ class SelectionPlan:
     top_n: int
     temperature: float
     prompt: str
+
+
+@dataclass(frozen=True, slots=True)
+class SelectionValidationResult:
+    """Audit profile applied while revalidating a persisted artifact."""
+
+    validation_profile: str
+    prompt_hash_revalidated: bool
+    commentary_policy_revalidated: bool
 
 
 def build_selection_plan(
@@ -124,9 +135,7 @@ def create_selection(
             )
         reasoning = model_pick.reasoning.strip()
         risk_note = model_pick.risk_note.strip()
-        if plan.response_language == "zh-CN":
-            _require_cjk("reasoning", reasoning)
-            _require_cjk("risk_note", risk_note)
+        _validate_pick_commentary(plan, candidate, reasoning, risk_note)
         symbols.append(symbol)
         picks.append(
             StockPick(
@@ -189,26 +198,162 @@ def create_selection(
     )
 
 
+def _validate_pick_commentary(
+    plan: SelectionPlan,
+    candidate: Candidate,
+    reasoning: str,
+    risk_note: str,
+) -> None:
+    commentary_locale: Market = (
+        "CN" if plan.response_language == "zh-CN" else "US"
+    )
+    for field, value in (("reasoning", reasoning), ("risk_note", risk_note)):
+        validate_customer_commentary(
+            field,
+            value,
+            candidate,
+            market=commentary_locale,
+            provider=plan.provider.name,
+            model=plan.provider.model,
+        )
+
+
 def run_selection(
     plan: SelectionPlan,
     *,
     timeout: float = 120.0,
     caller: ProviderCaller | None = None,
     generated_at: datetime | None = None,
+    credential_file: str | Path | None = None,
 ) -> SelectionArtifact:
     """Call the configured provider and return a validated artifact."""
 
-    response = (
-        caller(plan.prompt, plan.provider, plan.temperature, timeout)
-        if caller is not None
-        else call_provider(
+    if caller is not None:
+        response = caller(plan.prompt, plan.provider, plan.temperature, timeout)
+    else:
+        api_key = (
+            load_api_key(plan.provider.api_key_env, credential_file)
+            if credential_file is not None
+            else None
+        )
+        response = call_provider(
             plan.prompt,
             plan.provider,
             temperature=plan.temperature,
             timeout=timeout,
+            api_key=api_key,
         )
-    )
     return create_selection(plan, response, generated_at=generated_at)
+
+
+def validate_selection_artifact(
+    artifact: SelectionArtifact,
+    candidates_path: str | Path,
+) -> SelectionValidationResult:
+    """Fully revalidate a v2 artifact against its candidate manifest."""
+
+    provider = _provider_kind(artifact.provider)
+    base_url: str | None = None
+    api_key_env: str | None = None
+    if provider == "openai-compatible":
+        base_url = "https://validation.invalid/v1/chat/completions"
+        api_key_env = "VALIDATION_API_KEY"
+    plan = build_selection_plan(
+        candidates_path=candidates_path,
+        as_of=artifact.selection_as_of,
+        top_n=artifact.requested_top_n,
+        style=artifact.style,
+        response_language=artifact.response_language,
+        provider=provider,
+        model=artifact.model,
+        base_url=base_url,
+        api_key_env=api_key_env,
+        temperature=artifact.temperature,
+    )
+    _validate_artifact_trace(artifact, plan)
+    _validate_artifact_picks(artifact, plan)
+    return SelectionValidationResult(
+        validation_profile="current_full",
+        prompt_hash_revalidated=True,
+        commentary_policy_revalidated=True,
+    )
+
+
+def _validate_artifact_trace(
+    artifact: SelectionArtifact,
+    plan: SelectionPlan,
+) -> None:
+    universe = plan.universe
+    expected: dict[str, object] = {
+        "candidate_source": universe.source_name,
+        "input_sha256": universe.input_sha256,
+        "candidate_symbols_sha256": universe.candidate_symbols_sha256,
+        "prompt_sha256": sha256(plan.prompt.encode()).hexdigest(),
+        "candidate_observation_date": universe.observation_date,
+        "candidate_generated_at": universe.source_generated_at.astimezone(timezone.utc),
+        "data_cutoff": universe.data_cutoff,
+        "upstream_execution_not_before": universe.upstream_execution_not_before,
+        "input_contract": universe.input_contract,
+        "point_in_time_assurance": universe.point_in_time_assurance,
+        "input_count": len(universe.candidates),
+        "market": universe.market,
+        "provider_api": plan.provider.provider_api,
+    }
+    trace = artifact.generation_trace
+    actual: dict[str, object] = {
+        "candidate_source": trace.candidate_source,
+        "input_sha256": trace.input_sha256,
+        "candidate_symbols_sha256": trace.candidate_symbols_sha256,
+        "prompt_sha256": trace.prompt_sha256,
+        "candidate_observation_date": artifact.candidate_observation_date,
+        "candidate_generated_at": artifact.candidate_generated_at,
+        "data_cutoff": artifact.data_cutoff,
+        "upstream_execution_not_before": artifact.upstream_execution_not_before,
+        "input_contract": artifact.input_contract,
+        "point_in_time_assurance": artifact.point_in_time_assurance,
+        "input_count": artifact.input_count,
+        "market": artifact.market,
+        "provider_api": artifact.provider_api,
+    }
+    for field, expected_value in expected.items():
+        if actual[field] != expected_value:
+            raise ValueError(f"selection {field} does not match candidate manifest")
+    expected_limitations = list(universe.evidence_limitations)
+    if artifact.temporal_status == "retrospective_simulation":
+        expected_limitations.append("selection_generated_after_as_of")
+    if artifact.evidence_limitations != tuple(dict.fromkeys(expected_limitations)):
+        raise ValueError(
+            "selection evidence_limitations do not match candidate manifest"
+        )
+
+
+def _validate_artifact_picks(
+    artifact: SelectionArtifact,
+    plan: SelectionPlan,
+) -> None:
+    candidates = {item.symbol: item for item in plan.universe.candidates}
+    for pick in artifact.picks:
+        candidate = candidates.get(pick.symbol)
+        if candidate is None:
+            raise ValueError(
+                f"selection symbol is outside candidate manifest: {pick.symbol}"
+            )
+        if pick.name != candidate.name or pick.topic != candidate.topic:
+            raise ValueError(
+                f"selection enrichment does not match candidate: {pick.symbol}"
+            )
+        _validate_pick_commentary(
+            plan,
+            candidate,
+            pick.reasoning,
+            pick.risk_note,
+        )
+
+
+def _provider_kind(value: str) -> ProviderKind:
+    if value not in {"deepseek", "gemini", "openai-compatible"}:
+        raise ValueError(f"unsupported selection provider: {value}")
+    return cast(ProviderKind, value)
 
 
 def _parse_response(response_text: str) -> ModelSelection:
@@ -225,17 +370,12 @@ def _parse_response(response_text: str) -> ModelSelection:
         raise ValueError(f"provider output violates the strict schema: {exc}") from exc
 
 
-def _require_cjk(field: str, value: str) -> None:
-    if _CJK_IDEOGRAPH.search(value) is None:
-        raise ValueError(
-            f"provider output {field} must contain at least one CJK ideograph"
-        )
-
-
 __all__ = [
     "ProviderCaller",
     "SelectionPlan",
+    "SelectionValidationResult",
     "build_selection_plan",
     "create_selection",
     "run_selection",
+    "validate_selection_artifact",
 ]
