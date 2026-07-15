@@ -1,21 +1,23 @@
 {
-  "date": "2026-07-14",
-  "date_int": "20260714",
+  "schema_version": "1.0.0",
+  "artifact_type": "stock_candidate_universe",
+  "market": "US",
+  "observation_date": "2026-07-14",
   "generated_at": "2026-07-15T08:30:00-04:00",
   "data_cutoff": "2026-07-14",
   "universe_size": 2,
   "candidates": [
     {
-      "ticker": "AAPL",
-      "company_name": "Apple Inc.",
+      "symbol": "AAPL",
+      "name": "Apple Inc.",
       "score": 7.5,
-      "sector": "Technology"
+      "topic": "Technology"
     },
     {
-      "ticker": "BRK.B",
-      "company_name": "Berkshire Hathaway",
+      "symbol": "BRK.B",
+      "name": "Berkshire Hathaway",
       "score": 7.0,
-      "sector": "Financials"
+      "topic": "Financials"
     }
   ]
 }
