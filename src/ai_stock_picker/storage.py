@@ -7,12 +7,16 @@ import os
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
-from .contracts import SelectionArtifact
+from .contracts import PROMPT_VERSION, SelectionArtifact
 
 
 def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Path:
-    """Publish a validated artifact atomically without overwriting."""
+    """Publish a current, validated artifact atomically without overwriting."""
 
+    if artifact.prompt_version != PROMPT_VERSION:
+        raise ValueError(
+            "only artifacts using the current prompt version may be published"
+        )
     serialized = artifact.model_dump_json(indent=2)
     SelectionArtifact.model_validate_json(serialized, strict=True)
     return write_new_bytes(output_path, f"{serialized}\n".encode())
