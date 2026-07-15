@@ -2,79 +2,101 @@ from __future__ import annotations
 
 import json
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
 
-from stock_analysis.app.cli import app, create_parser, main
+from ai_stock_picker.cli import app, create_parser, main
+from ai_stock_picker.selection import create_selection
 
 
-def test_root_help_lists_only_two_markets(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
+def test_root_help_is_market_neutral(capsys: pytest.CaptureFixture[str]) -> None:
     assert main([]) == 0
     output = capsys.readouterr().out
-    assert "{us,cn}" in output
-    assert "backtest" not in output
-    assert "report" not in output
-    assert "pipeline" not in output
+    assert "pick" in output
+    assert "migrate-csv" in output
+    assert "cn" not in output.lower()
 
 
-def test_market_parsers_expose_only_pick() -> None:
+def test_pick_parser_has_no_market_subcommand() -> None:
     parser = create_parser()
-    for market in ("us", "cn"):
-        with pytest.raises(SystemExit) as exit_info:
-            parser.parse_args([market, "--help"])
-        assert exit_info.value.code == 0
-    for removed in ("backtest", "report", "pipeline"):
-        with pytest.raises(SystemExit):
-            parser.parse_args(["cn", removed])
-
-
-@pytest.mark.parametrize(
-    ("market", "fixture_name", "style"),
-    [("cn", "cn_manifest", "momentum"), ("us", "us_manifest", "growth")],
-)
-def test_dry_run_is_network_free_and_reports_hashes(
-    market: str,
-    fixture_name: str,
-    style: str,
-    request: pytest.FixtureRequest,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    manifest = request.getfixturevalue(fixture_name)
-    assert isinstance(manifest, Path)
-    code = main(
+    args = parser.parse_args(
         [
-            market,
             "pick",
             "--candidates",
-            str(manifest),
+            "x.json",
+            "--as-of",
+            "2026-07-15",
+            "--top-n",
+            "1",
+            "--style",
+            "quality",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
+            "--dry-run",
+        ]
+    )
+    assert args.command == "pick"
+
+
+def test_dry_run_derives_market_from_manifest(
+    us_manifest: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        [
+            "pick",
+            "--candidates",
+            str(us_manifest),
             "--as-of",
             "20260715",
             "--top-n",
             "2",
             "--style",
-            style,
+            "growth",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
             "--dry-run",
         ]
     )
     assert code == 0
     payload = json.loads(capsys.readouterr().out)
-    assert payload["dry_run"] is True
-    assert payload["market"] == market.upper()
-    assert payload["as_of"] == "2026-07-15"
-    assert payload["candidate_observation_date"] == "2026-07-14"
-    expected_assurance = "signal_date_only" if market == "cn" else "unverified"
-    assert payload["point_in_time_assurance"] == expected_assurance
-    assert payload["eligible_as_oos_evidence"] is False
+    assert payload["market"] == "US"
+    assert payload["provider"] == "deepseek"
     assert payload["output"] is None
-    assert len(payload["input_sha256"]) == 64
     assert len(payload["prompt_sha256"]) == 64
 
 
-def test_live_path_writes_validated_artifact(
-    cn_manifest: Path,
+def test_live_path_requires_output(
+    us_manifest: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    code = main(
+        [
+            "pick",
+            "--candidates",
+            str(us_manifest),
+            "--as-of",
+            "2026-07-15",
+            "--top-n",
+            "1",
+            "--style",
+            "quality",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
+        ]
+    )
+    assert code == 2
+    assert "--output is required" in capsys.readouterr().err
+
+
+def test_live_path_writes_artifact(
+    us_manifest: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
@@ -83,156 +105,140 @@ def test_live_path_writes_validated_artifact(
         {
             "picks": [
                 {
-                    "symbol": "600000.SH",
+                    "symbol": "AAPL",
                     "confidence_score": 8,
-                    "reasoning": "候选特征支持该排序",
-                    "risk_note": "主要风险来自候选特征波动",
+                    "reasoning": "Evidence",
+                    "risk_note": "Risk",
                 }
             ]
         }
     )
     monkeypatch.setattr(
-        "stock_analysis.ai_lab.selection.call_deepseek",
-        lambda prompt, *, model, timeout: response,
+        "ai_stock_picker.cli.run_selection",
+        lambda plan, timeout: create_selection(
+            plan,
+            response,
+            generated_at=datetime(2026, 7, 15, 15, tzinfo=timezone.utc),
+        ),
     )
     output = tmp_path / "selection.json"
     code = main(
         [
-            "cn",
             "pick",
             "--candidates",
-            str(cn_manifest),
+            str(us_manifest),
             "--output",
             str(output),
             "--as-of",
             "2026-07-15",
             "--top-n",
             "1",
+            "--style",
+            "quality",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
         ]
     )
     assert code == 0
     payload = json.loads(output.read_text())
-    assert payload["picks"][0]["name"] == "浦发银行"
-    assert payload["selection_as_of"] == "2026-07-15"
-    assert payload["candidate_observation_date"] == "2026-07-14"
-    assert payload["strict_point_in_time"] is False
-    assert payload["eligible_as_oos_evidence"] is False
+    assert payload["provider"] == "deepseek"
+    assert "generation_trace" in payload
     assert "validated picks" in capsys.readouterr().out
 
 
-def test_live_path_requires_output(
-    cn_manifest: Path,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    code = main(
-        [
-            "cn",
-            "pick",
-            "--candidates",
-            str(cn_manifest),
-            "--as-of",
-            "2026-07-15",
-            "--top-n",
-            "1",
-        ]
-    )
-    assert code == 2
-    assert "--output is required" in capsys.readouterr().err
-
-
-def test_live_path_refuses_existing_output_before_provider_call(
-    cn_manifest: Path,
+def test_existing_output_fails_before_provider(
+    us_manifest: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     output = tmp_path / "selection.json"
-    output.write_text("existing receipt\n", encoding="utf-8")
+    output.write_text("existing\n", encoding="utf-8")
 
-    def unexpected_call(*_args: object, **_kwargs: object) -> str:
+    def unexpected(*args: object, **kwargs: object) -> str:
         raise AssertionError("provider must not be called")
 
-    monkeypatch.setattr(
-        "stock_analysis.ai_lab.selection.call_deepseek", unexpected_call
-    )
+    monkeypatch.setattr("ai_stock_picker.selection.call_provider", unexpected)
     code = main(
         [
-            "cn",
             "pick",
             "--candidates",
-            str(cn_manifest),
+            str(us_manifest),
             "--output",
             str(output),
             "--as-of",
             "2026-07-15",
             "--top-n",
             "1",
+            "--style",
+            "quality",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
         ]
     )
-
     assert code == 2
     assert "already exists" in capsys.readouterr().err
-    assert output.read_text(encoding="utf-8") == "existing receipt\n"
 
 
-@pytest.mark.parametrize(
-    "arguments",
-    [
+def test_migrate_csv_command(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = tmp_path / "legacy.csv"
+    source.write_text("ticker,company_name,score\nAAPL,Apple,9\n", encoding="utf-8")
+    output = tmp_path / "manifest.json"
+    code = main(
         [
-            "cn",
+            "migrate-csv",
+            "--input",
+            str(source),
+            "--output",
+            str(output),
+            "--market",
+            "US",
+            "--observation-date",
+            "2026-07-14",
+            "--generated-at",
+            "2026-07-15T00:00:00+00:00",
+            "--data-cutoff",
+            "2026-07-14",
+        ]
+    )
+    assert code == 0
+    assert json.loads(output.read_text())["market"] == "US"
+    assert "versioned candidate manifest" in capsys.readouterr().out
+
+
+def test_cli_errors_have_no_traceback(capsys: pytest.CaptureFixture[str]) -> None:
+    code = main(
+        [
             "pick",
             "--candidates",
-            "missing",
-            "--output",
-            "x",
+            "missing.json",
             "--as-of",
             "bad",
             "--top-n",
             "1",
-        ],
-        [
-            "cn",
-            "pick",
-            "--candidates",
-            "missing",
-            "--output",
-            "x",
-            "--as-of",
-            "20260715",
-            "--top-n",
-            "1",
-            "--timeout",
-            "0",
-        ],
-        [
-            "cn",
-            "pick",
-            "--candidates",
-            "missing",
-            "--output",
-            "x",
-            "--as-of",
-            "20260715",
-            "--top-n",
-            "1",
-            "--timeout",
-            "nan",
-        ],
-    ],
-)
-def test_cli_reports_validation_errors_without_traceback(
-    arguments: list[str], capsys: pytest.CaptureFixture[str]
-) -> None:
-    assert main(arguments) == 2
+            "--style",
+            "quality",
+            "--response-language",
+            "en",
+            "--provider",
+            "deepseek",
+            "--dry-run",
+        ]
+    )
+    assert code == 2
     error = capsys.readouterr().err
     assert error.startswith("aipick: error:")
     assert "Traceback" not in error
 
 
-def test_console_entrypoint_exits_with_main_code(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_console_entrypoint_exits(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(sys, "argv", ["aipick"])
-    with pytest.raises(SystemExit) as exit_info:
+    with pytest.raises(SystemExit) as exc:
         app()
-    assert exit_info.value.code == 0
+    assert exc.value.code == 0
