@@ -5,20 +5,25 @@ from __future__ import annotations
 import json
 
 from .candidate_models import CandidateUniverse
+from .commentary_contract import (
+    COMMENTARY_POLICY,
+    FEATURE_SEMANTICS,
+    preferred_commentary_labels,
+)
 from .contracts import ResponseLanguage, Style
 
 _STYLE_GUIDANCE: dict[Style, str] = {
     "momentum": (
-        "Prioritize confirmed price and volume momentum, theme breadth, liquidity, "
-        "and explicit downside risk."
+        "Prioritize stronger supplied price and volume momentum, theme breadth, "
+        "liquidity, and stability fields. Do not infer outside facts."
     ),
     "quality": (
-        "Prioritize durable quality, liquidity, balanced evidence, and lower downside "
-        "risk. Penalize weak or contradictory candidate features."
+        "Use only supplied quality, liquidity, stability, and balance fields. "
+        "Penalize weak or contradictory supplied values without inferring fundamentals."
     ),
     "growth": (
-        "Prioritize supported growth signals and sector tailwinds while penalizing "
-        "fragile narratives, weak evidence, and concentrated downside risk."
+        "Use only explicit supplied growth and theme fields. Penalize weak evidence "
+        "and concentration without inferring sector conditions or future performance."
     ),
 }
 
@@ -33,13 +38,7 @@ def build_prompt(
     """Build a deterministic JSON prompt from validated candidates."""
 
     candidate_rows = [
-        {
-            "symbol": candidate.symbol,
-            "name": candidate.name,
-            "topic": candidate.topic,
-            "score": candidate.score,
-            "features": candidate.features,
-        }
+        _prompt_candidate(candidate, universe.market)
         for candidate in sorted(
             universe.candidates, key=lambda item: item.score, reverse=True
         )
@@ -49,12 +48,15 @@ def build_prompt(
             "Write reasoning and risk_note in Simplified Chinese. Each field must "
             "contain at least one CJK ideograph."
         )
-        example_reasoning = "候选特征中的量价、质量或增长信号支持该排序。"
-        example_risk = "主要风险来自候选特征反映的波动和证据局限。"
+        example_reasoning = "综合候选评分支持该股票的相对排序。"
+        example_risk = "风险说明仅基于综合候选评分，仍有信息边界。"
     else:
         language_constraint = "Write reasoning and risk_note in English."
-        example_reasoning = "The supplied candidate features support this ranking."
-        example_risk = "The main downside risk is visible in the supplied features."
+        example_reasoning = "The overall candidate score supports the relative ranking."
+        example_risk = (
+            "The risk note is based only on the overall candidate score and remains "
+            "evidence-limited."
+        )
     instructions = {
         "task": "rerank_candidates",
         "market": universe.market,
@@ -63,6 +65,8 @@ def build_prompt(
         "style": style,
         "style_guidance": _STYLE_GUIDANCE[style],
         "response_language": response_language,
+        "commentary_policy": COMMENTARY_POLICY,
+        "feature_semantics": FEATURE_SEMANTICS,
         "required_count": top_n,
         "constraints": [
             "Choose exactly required_count unique symbols from candidates.",
@@ -74,6 +78,15 @@ def build_prompt(
                 "and risk_note."
             ),
             "confidence_score must be an integer from 1 through 10.",
+            (
+                "Every commentary sentence must cite a supplied candidate field or "
+                "approved commentary label. Categorical fields must include the actual "
+                "supplied value."
+            ),
+            (
+                "Do not disclose provider or model metadata, URLs, addresses, secrets, "
+                "trading instructions, price targets, return promises, or outside facts."
+            ),
             language_constraint,
         ],
         "response_example": {
@@ -91,6 +104,27 @@ def build_prompt(
     return json.dumps(
         instructions, ensure_ascii=False, sort_keys=True, separators=(",", ":")
     )
+
+
+def _prompt_candidate(candidate: object, market: str) -> dict[str, object]:
+    from .candidate_models import Candidate
+    from .contracts import Market
+
+    item = candidate
+    assert isinstance(item, Candidate)
+    typed_market = market
+    assert typed_market in {"CN", "US"}
+    available_fields = {"symbol", "name", "topic", "score", *item.features}
+    return {
+        "symbol": item.symbol,
+        "name": item.name,
+        "topic": item.topic,
+        "score": item.score,
+        "features": item.features,
+        "commentary_labels": preferred_commentary_labels(
+            available_fields, typed_market  # type: ignore[arg-type]
+        ),
+    }
 
 
 __all__ = ["build_prompt"]
