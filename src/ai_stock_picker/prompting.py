@@ -37,8 +37,9 @@ def build_prompt(
 ) -> str:
     """Build a deterministic JSON prompt from validated candidates."""
 
+    commentary_locale: Market = "CN" if response_language == "zh-CN" else "US"
     candidate_rows = [
-        _prompt_candidate(candidate, universe.market)
+        _prompt_candidate(candidate, commentary_locale)
         for candidate in sorted(
             universe.candidates, key=lambda item: item.score, reverse=True
         )
@@ -106,7 +107,7 @@ def build_prompt(
     )
 
 
-def _prompt_candidate(candidate: Candidate, market: Market) -> dict[str, object]:
+def _prompt_candidate(candidate: Candidate, locale: Market) -> dict[str, object]:
     available_fields = {"symbol", "name", "topic", "score", *candidate.features}
     return {
         "symbol": candidate.symbol,
@@ -114,7 +115,7 @@ def _prompt_candidate(candidate: Candidate, market: Market) -> dict[str, object]
         "topic": candidate.topic,
         "score": candidate.score,
         "features": candidate.features,
-        "commentary_labels": preferred_commentary_labels(available_fields, market),
+        "commentary_labels": preferred_commentary_labels(available_fields, locale),
     }
 
 
