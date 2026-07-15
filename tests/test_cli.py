@@ -40,20 +40,16 @@ def test_dry_run_is_network_free_and_reports_hashes(
     fixture_name: str,
     style: str,
     request: pytest.FixtureRequest,
-    tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     manifest = request.getfixturevalue(fixture_name)
     assert isinstance(manifest, Path)
-    output = tmp_path / "must-not-exist.json"
     code = main(
         [
             market,
             "pick",
             "--candidates",
             str(manifest),
-            "--output",
-            str(output),
             "--as-of",
             "20260715",
             "--top-n",
@@ -72,9 +68,9 @@ def test_dry_run_is_network_free_and_reports_hashes(
     expected_assurance = "signal_date_only" if market == "cn" else "unverified"
     assert payload["point_in_time_assurance"] == expected_assurance
     assert payload["eligible_as_oos_evidence"] is False
+    assert payload["output"] is None
     assert len(payload["input_sha256"]) == 64
     assert len(payload["prompt_sha256"]) == 64
-    assert not output.exists()
 
 
 def test_live_path_writes_validated_artifact(
@@ -124,6 +120,26 @@ def test_live_path_writes_validated_artifact(
     assert "validated picks" in capsys.readouterr().out
 
 
+def test_live_path_requires_output(
+    cn_manifest: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    code = main(
+        [
+            "cn",
+            "pick",
+            "--candidates",
+            str(cn_manifest),
+            "--as-of",
+            "2026-07-15",
+            "--top-n",
+            "1",
+        ]
+    )
+    assert code == 2
+    assert "--output is required" in capsys.readouterr().err
+
+
 def test_live_path_refuses_existing_output_before_provider_call(
     cn_manifest: Path,
     tmp_path: Path,
@@ -162,7 +178,18 @@ def test_live_path_refuses_existing_output_before_provider_call(
 @pytest.mark.parametrize(
     "arguments",
     [
-        ["cn", "pick", "--candidates", "missing", "--output", "x", "--as-of", "bad"],
+        [
+            "cn",
+            "pick",
+            "--candidates",
+            "missing",
+            "--output",
+            "x",
+            "--as-of",
+            "bad",
+            "--top-n",
+            "1",
+        ],
         [
             "cn",
             "pick",
@@ -172,6 +199,8 @@ def test_live_path_refuses_existing_output_before_provider_call(
             "x",
             "--as-of",
             "20260715",
+            "--top-n",
+            "1",
             "--timeout",
             "0",
         ],
@@ -184,6 +213,8 @@ def test_live_path_refuses_existing_output_before_provider_call(
             "x",
             "--as-of",
             "20260715",
+            "--top-n",
+            "1",
             "--timeout",
             "nan",
         ],
