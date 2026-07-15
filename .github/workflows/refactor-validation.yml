@@ -1,8 +1,8 @@
 name: Refactor validation
 
 on:
-  push:
-    branches: [codex/rename-package-contracts]
+  pull_request:
+    branches: [main]
 
 permissions:
   contents: write
