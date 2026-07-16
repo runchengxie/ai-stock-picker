@@ -461,10 +461,32 @@ def test_live_path_refuses_existing_output_before_provider_call(
     assert output.read_text(encoding="utf-8") == "existing receipt\n"
 
 
+@pytest.mark.parametrize(
+    ("credential_name", "credential_payload"),
+    [
+        (
+            "owner.env",
+            "GEMINI_API_KEY=must-not-be-used\nDEEPSEEK_API_KEY=owner-key\n",
+        ),
+        (
+            "api_keys.json",
+            json.dumps(
+                {
+                    "ai_stock_picker": {
+                        "gemini": {"api_key": "must-not-be-used"},
+                        "deepseek": {"api_key": "owner-key"},
+                    }
+                }
+            ),
+        ),
+    ],
+)
 def test_live_path_uses_market_specific_key_from_credential_file(
     cn_manifest: Path,
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    credential_name: str,
+    credential_payload: str,
 ) -> None:
     response = json.dumps(
         {
@@ -478,11 +500,8 @@ def test_live_path_uses_market_specific_key_from_credential_file(
             ]
         }
     )
-    credential_file = tmp_path / "owner.env"
-    credential_file.write_text(
-        "GEMINI_API_KEY=must-not-be-used\nDEEPSEEK_API_KEY=owner-key\n",
-        encoding="utf-8",
-    )
+    credential_file = tmp_path / credential_name
+    credential_file.write_text(credential_payload, encoding="utf-8")
     credential_file.chmod(0o600)
     observed: list[str | None] = []
 

@@ -38,7 +38,10 @@ target-version = "py310"
 line-length = 88
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+select = ["E", "F", "I", "UP", "B", "C90"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 17
 
 [tool.ruff.format]
 quote-style = "double"

@@ -72,10 +72,21 @@ uv run aipick us pick \
   --style quality
 ```
 
-跨仓调用可以改传 `--credential-file /absolute/path/aipick.env`。文件必须由当前用户
-拥有、权限精确为 `0600`、不超过 128 KiB，并用 UTF-8 `KEY=value` 行保存对应市场的
-key。解析器不调用 shell 或展开变量，只读取当前 provider 的专属 key；未传该参数时
-才读取进程环境变量。
+跨仓调用可以改传 `--credential-file /absolute/path/api_keys.json`。文件必须由当前用户
+拥有、权限精确为 `0600`、不超过 128 KiB。推荐 JSON 格式如下；旧的 UTF-8
+`KEY=value` 行格式继续兼容。
+
+```json
+{
+  "ai_stock_picker": {
+    "deepseek": {"api_key": "YOUR_DEEPSEEK_API_KEY"},
+    "gemini": {"api_key": "YOUR_GEMINI_API_KEY"}
+  }
+}
+```
+
+解析器不调用 shell 或展开变量，只读取当前 provider 的专属 key；JSON 重复字段、错误
+类型和空 key 都会失败。未传 `--credential-file` 时才读取进程环境变量。
 
 结果文件不会覆盖已有文件。重复运行时，请复用已有结果或指定新的输出路径。
 

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import stat
+from typing import Any
 
 from stock_analysis.ai_lab.contracts import Provider
 
@@ -14,6 +16,7 @@ _PROVIDER_KEYS: dict[Provider, str] = {
     "deepseek": "DEEPSEEK_API_KEY",
     "gemini": "GEMINI_API_KEY",
 }
+_JSON_NAMESPACE = "ai_stock_picker"
 _KEY_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
 _READ_CHUNK_BYTES = 16 * 1024
 
@@ -28,9 +31,11 @@ def load_provider_api_key(
 ) -> str:
     """Return only the API key assigned to ``provider`` in a secure file.
 
-    The file format is deliberately smaller than dotenv or shell syntax: blank
-    lines and whole-line comments are ignored, and all other useful lines are
-    literal ``KEY=value`` assignments. Values are never expanded or executed.
+    The file may be a strict JSON credential registry or the legacy format that
+    is deliberately smaller than dotenv or shell syntax. JSON uses
+    ``ai_stock_picker.<provider>.api_key``. Legacy blank lines and whole-line
+    comments are ignored, and all other useful lines are literal ``KEY=value``
+    assignments. Values are never expanded or executed.
     """
 
     try:
@@ -53,7 +58,7 @@ def load_provider_api_key(
         ) from None
     finally:
         os.close(descriptor)
-    return _parse_requested_assignment(payload, requested_key)
+    return _parse_requested_credential(payload, provider, requested_key)
 
 
 def _open_securely(path: str | os.PathLike[str]) -> int:
@@ -137,12 +142,73 @@ def _bounded_read(descriptor: int) -> bytes:
     return b"".join(chunks)
 
 
-def _parse_requested_assignment(payload: bytes, requested_key: str) -> str:
+def _parse_requested_credential(
+    payload: bytes,
+    provider: Provider,
+    requested_key: str,
+) -> str:
     try:
         text = payload.decode("utf-8")
     except UnicodeDecodeError:
         raise CredentialFileError("credential file must be valid UTF-8") from None
 
+    if text.lstrip().startswith("{"):
+        return _parse_json_assignment(text, provider)
+    return _parse_requested_assignment(text, requested_key)
+
+
+class _DuplicateJsonKey(ValueError):
+    """Internal signal for duplicate JSON object members."""
+
+
+def _unique_json_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise _DuplicateJsonKey
+        result[key] = value
+    return result
+
+
+def _parse_json_assignment(text: str, provider: Provider) -> str:
+    try:
+        payload = json.loads(text, object_pairs_hook=_unique_json_object)
+    except (json.JSONDecodeError, _DuplicateJsonKey):
+        raise CredentialFileError("credential JSON is invalid") from None
+    if not isinstance(payload, dict):
+        raise CredentialFileError("credential JSON root must be an object")
+
+    namespace = payload.get(_JSON_NAMESPACE)
+    if namespace is None:
+        raise CredentialFileError(f"{_JSON_NAMESPACE} credential section is missing")
+    if not isinstance(namespace, dict):
+        raise CredentialFileError(
+            f"{_JSON_NAMESPACE} credential section must be an object"
+        )
+
+    provider_config = namespace.get(provider)
+    if provider_config is None:
+        raise CredentialFileError(f"{_JSON_NAMESPACE}.{provider} credential is missing")
+    if not isinstance(provider_config, dict):
+        raise CredentialFileError(
+            f"{_JSON_NAMESPACE}.{provider} credential must be an object"
+        )
+
+    value = provider_config.get("api_key")
+    if value is None:
+        raise CredentialFileError(f"{_JSON_NAMESPACE}.{provider}.api_key is missing")
+    if not isinstance(value, str):
+        raise CredentialFileError(
+            f"{_JSON_NAMESPACE}.{provider}.api_key must be a string"
+        )
+    if not value.strip():
+        raise CredentialFileError(f"{_JSON_NAMESPACE}.{provider}.api_key is empty")
+    if any(character in value for character in ("\x00", "\r", "\n")):
+        raise CredentialFileError(f"{_JSON_NAMESPACE}.{provider}.api_key is malformed")
+    return value
+
+
+def _parse_requested_assignment(text: str, requested_key: str) -> str:
     found: str | None = None
     for raw_line in text.split("\n"):
         line = raw_line[:-1] if raw_line.endswith("\r") else raw_line

@@ -100,10 +100,12 @@ A 股只使用 `DEEPSEEK_API_KEY`。
 
 显式传入 `--credential-file` 时，`stock_analysis.ai_lab.credentials` 使用安全文件描述符
 读取普通文件：要求当前用户所有、权限精确为 `0600`、大小不超过 128 KiB，并拒绝
-符号链接。它只解析 UTF-8 literal `KEY=value`，不执行 shell、不展开 `$()`，并按
-selection plan 的 provider 只返回 `DEEPSEEK_API_KEY` 或 `GEMINI_API_KEY`。未显式传
-文件时，provider 才回退读取自己的进程环境变量。读取前后还会比较文件的
-device/inode/size/mtime/ctime 快照；读取期间即使同 inode 原地改写也会失败。
+符号链接。推荐使用严格 JSON 命名空间
+`ai_stock_picker.<deepseek|gemini>.api_key`，旧的 UTF-8 literal `KEY=value` 继续兼容；
+两种格式都不执行 shell、不展开 `$()`，并按 selection plan 的 provider 只返回对应
+key。JSON 重复字段、错误类型与空 key 会失败。未显式传文件时，provider 才回退读取
+自己的进程环境变量。读取前后还会比较文件的 device/inode/size/mtime/ctime 快照；
+读取期间即使同 inode 原地改写也会失败。
 
 ### `stock_analysis.ai_lab.selection`
 

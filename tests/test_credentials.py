@@ -42,6 +42,78 @@ def test_loads_only_requested_provider_key(
     assert load_provider_api_key(provider, path) == value
 
 
+@pytest.mark.parametrize(
+    ("provider", "value"),
+    [
+        ("deepseek", "deepseek-json-secret"),
+        ("gemini", "gemini-json-secret"),
+    ],
+)
+def test_loads_requested_provider_from_namespaced_json(
+    tmp_path: Path,
+    provider: Provider,
+    value: str,
+) -> None:
+    path = _write_credentials(
+        tmp_path / "api_keys.json",
+        (
+            "{\n"
+            '  "unrelated": "ignored",\n'
+            '  "ai_stock_picker": {\n'
+            '    "deepseek": {"api_key": "deepseek-json-secret"},\n'
+            '    "gemini": {"api_key": "gemini-json-secret"}\n'
+            "  }\n"
+            "}\n"
+        ),
+    )
+
+    assert load_provider_api_key(provider, path) == value
+
+
+def test_json_provider_isolation_does_not_fallback_to_sibling(tmp_path: Path) -> None:
+    path = _write_credentials(
+        tmp_path / "api_keys.json",
+        '{"ai_stock_picker":{"gemini":{"api_key":"gemini-only"}}}\n',
+    )
+
+    with pytest.raises(
+        CredentialFileError, match=r"ai_stock_picker\.deepseek.*missing"
+    ):
+        load_provider_api_key("deepseek", path)
+
+
+@pytest.mark.parametrize(
+    ("content", "message"),
+    [
+        ("{}", "section is missing"),
+        ('{"ai_stock_picker":[]}', "section must be an object"),
+        ('{"ai_stock_picker":{"deepseek":[]}}', "credential must be an object"),
+        ('{"ai_stock_picker":{"deepseek":{}}}', "api_key is missing"),
+        ('{"ai_stock_picker":{"deepseek":{"api_key":null}}}', "api_key is missing"),
+        ('{"ai_stock_picker":{"deepseek":{"api_key":1}}}', "api_key must be a string"),
+        ('{"ai_stock_picker":{"deepseek":{"api_key":"  "}}}', "api_key is empty"),
+        (
+            '{"ai_stock_picker":{"deepseek":{"api_key":"bad\\nkey"}}}',
+            "api_key is malformed",
+        ),
+        ('{"ai_stock_picker":', "credential JSON is invalid"),
+        (
+            '{"ai_stock_picker":{"deepseek":{"api_key":"first","api_key":"second"}}}',
+            "credential JSON is invalid",
+        ),
+    ],
+)
+def test_rejects_invalid_json_credentials(
+    tmp_path: Path,
+    content: str,
+    message: str,
+) -> None:
+    path = _write_credentials(tmp_path / "api_keys.json", content)
+
+    with pytest.raises(CredentialFileError, match=message):
+        load_provider_api_key("deepseek", path)
+
+
 def test_cross_provider_assignment_is_not_a_fallback(tmp_path: Path) -> None:
     path = _write_credentials(
         tmp_path / "credentials.env",

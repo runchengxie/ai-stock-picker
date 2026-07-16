@@ -4,6 +4,11 @@ import sys
 from pathlib import Path
 from types import ModuleType
 
+if sys.version_info >= (3, 11):
+    import tomllib
+else:
+    import tomli as tomllib
+
 
 def _repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -43,3 +48,12 @@ def test_maintainability_metrics_ratchet_flag_passes() -> None:
         check=False,
     )
     assert result.returncode == 0, f"Ratchet flag failed:\n{result.stderr}"
+
+
+def test_ruff_cyclomatic_complexity_gate_is_pinned() -> None:
+    with (_repo_root() / "pyproject.toml").open("rb") as config_file:
+        config = tomllib.load(config_file)
+
+    lint_config = config["tool"]["ruff"]["lint"]
+    assert "C90" in lint_config["select"]
+    assert lint_config["mccabe"]["max-complexity"] == 17
