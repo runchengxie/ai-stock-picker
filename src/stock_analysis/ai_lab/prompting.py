@@ -11,6 +11,7 @@ from .candidates import CandidateUniverse
 from .commentary_contract import (
     COMMENTARY_POLICY,
     FEATURE_SEMANTICS,
+    categorical_citation_policy,
     preferred_commentary_labels,
 )
 from .contracts import Market, Style, validate_symbol
@@ -60,6 +61,7 @@ def build_prompt(
         style,
         top_n,
         candidate_rows,
+        production_commentary_contract=not include_legacy_example,
     )
     if include_legacy_example:
         _, _, example_reasoning, example_risk = _prompt_language_settings(market)
@@ -127,13 +129,15 @@ def _instruction_payload(
     style: Style,
     top_n: int,
     candidate_rows: list[dict[str, object]],
+    *,
+    production_commentary_contract: bool,
 ) -> dict[str, object]:
     available_fields = {"symbol", "name", "topic", "score"}
     for candidate in universe.candidates:
         available_fields.update(candidate.features)
     labels = preferred_commentary_labels(available_fields, market)
     response_language, language_constraint, _, _ = _prompt_language_settings(market)
-    return {
+    payload: dict[str, object] = {
         "task": "rerank_candidates",
         "market": market,
         "selection_as_of": universe.selection_as_of.isoformat(),
@@ -149,7 +153,11 @@ def _instruction_payload(
         "commentary_policy": COMMENTARY_POLICY,
         "response_language": response_language,
         "required_count": top_n,
-        "constraints": _prompt_constraints(language_constraint),
+        "constraints": (
+            _production_prompt_constraints(language_constraint)
+            if production_commentary_contract
+            else _prompt_constraints(language_constraint)
+        ),
         "response_schema": {
             "picks": [
                 {
@@ -162,6 +170,9 @@ def _instruction_payload(
         },
         "candidates": candidate_rows,
     }
+    if production_commentary_contract:
+        payload["categorical_citation_policy"] = categorical_citation_policy(market)
+    return payload
 
 
 def _prompt_constraints(language_constraint: str) -> list[str]:
@@ -204,6 +215,34 @@ def _prompt_constraints(language_constraint: str) -> list[str]:
             "risk_note."
         ),
         "confidence_score must be an integer from 1 through 10.",
+        language_constraint,
+    ]
+
+
+def _production_prompt_constraints(language_constraint: str) -> list[str]:
+    constraints = _prompt_constraints(language_constraint)
+    return [
+        *constraints[:-1],
+        (
+            "Treat source_topics and source_concepts as separate, non-interchangeable "
+            "arrays. A value may be described as a topic only when it occurs in that "
+            "candidate's source_topics, and as a concept only when it occurs in that "
+            "candidate's source_concepts. Never move, merge, or relabel values between "
+            "the two fields."
+        ),
+        (
+            "Whenever citing source_topics or source_concepts, emit one explicit "
+            "field/value pair using categorical_citation_policy.required_format. "
+            "Copy one exact value inside ASCII square brackets and repeat the field "
+            "label for every additional value; never combine values under one label."
+        ),
+        (
+            "A provider- or model-looking token inside an exact supplied candidate "
+            "value is candidate data only. It may appear only as "
+            "'<approved commentary_field_labels value>：[<exact supplied value>]' "
+            "and must never be described as the actual provider, model, or system "
+            "metadata."
+        ),
         language_constraint,
     ]
 

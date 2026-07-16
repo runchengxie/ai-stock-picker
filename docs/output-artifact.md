@@ -154,15 +154,22 @@ uv run aipick cn validate \
 prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `source_concepts`。上游
 `risk_score` 会在进入 prompt 前投影成 `intraday_stability_score`，语义固定为
 `higher = more stable`。高值不得解释为风险更高。当前 prompt 版本为
-`2026-07-16.4`。该版本移除了带真实股票代码的响应示例，每个候选只渲染一份顶层
-`score`。reader 兼容读取 `2026-07-15.2` 和 `2026-07-15.3`，正式 writer 只发布当前
-版本。预注册稳定性试验使用隔离的 legacy v3 构建器，继续保留旧版示例和重复 `score`。
+`2026-07-17.5`。该版本在继续移除真实股票代码示例和重复 `score` 的基础上，明确要求
+`source_topics` 与 `source_concepts` 不可互换；引用其中的值时使用
+`<字段标签>：[<该字段的一个精确值>]`，多个值分别重复字段标签。reader 兼容读取
+`2026-07-15.2`、`2026-07-15.3` 和 `2026-07-16.4`，正式 writer 只发布当前版本。
+预注册稳定性试验使用隔离的 legacy v3 构建器，继续保留旧版示例和重复 `score`。
 
 创建 artifact 时还会进行 fail-closed 校验：
 
 - 每个句子至少引用一个实际存在的候选字段或其获批自然语言标签
 - 引用 `source_topics`、`source_concepts`、`topic`、`name`、`symbol`、`sector`、
   `industry` 或 `confidence_label` 时，句中必须原样包含该候选字段的实际值
+- `source_topics` 与 `source_concepts` 的值不能跨字段改名或混在同一个标签下；Prompt
+  要求逐个输出显式的字段/值引用
+- 候选值若包含类似 provider/model 的词元，只有在
+  `<获批字段标签>：[<精确候选值>]` 中才按候选数据处理；同一句其他位置的相同词元仍会
+  被系统元数据门禁拒绝
 - 拒绝不属于候选字段白名单的显式字段引用
 - Unicode 规范化后拒绝 Cyrillic/Greek confusable、域名、邮件、IP 地址、provider/model、
   凭据和 secret
@@ -184,7 +191,7 @@ prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `sour
   "generated_at": "2026-07-15T02:00:00Z",
   "provider": "deepseek",
   "model": "deepseek-v4-flash",
-  "prompt_version": "2026-07-16.4",
+  "prompt_version": "2026-07-17.5",
   "style": "momentum",
   "input_contract": "hot_sector_candidate_universe_v1",
   "temporal_status": "contemporaneous",

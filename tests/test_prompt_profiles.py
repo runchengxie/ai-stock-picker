@@ -30,11 +30,30 @@ def test_production_score_is_single_and_legacy_v3_matches_head_golden(
 
     production_prompt = json.loads(production.prompt)
     assert "response_example" not in production_prompt
+    assert production_prompt["categorical_citation_policy"] == {
+        "source_concepts": {
+            "label": "关联概念",
+            "value_source": "same_candidate.features.source_concepts",
+            "required_format": "关联概念：[<one exact source_concepts value>]",
+            "repeat_label_for_each_value": True,
+        },
+        "source_topics": {
+            "label": "热点主题",
+            "value_source": "same_candidate.features.source_topics",
+            "required_format": "热点主题：[<one exact source_topics value>]",
+            "repeat_label_for_each_value": True,
+        },
+    }
+    assert any(
+        "separate, non-interchangeable arrays" in constraint
+        for constraint in production_prompt["constraints"]
+    )
     assert all(
         "score" in candidate and "score" not in candidate["features"]
         for candidate in production_prompt["candidates"]
     )
     legacy_prompt = json.loads(legacy.prompt)
+    assert "categorical_citation_policy" not in legacy_prompt
     assert legacy.prompt_version == LEGACY_STABILITY_PROMPT_VERSION
     assert legacy_prompt["response_example"]["picks"][0]["symbol"] == "600000.SH"
     assert all(

@@ -251,7 +251,7 @@ def test_live_path_writes_validated_artifact(
         "market": "CN",
         "picks": 1,
         "prompt_hash_revalidated": True,
-        "prompt_version": "2026-07-16.4",
+        "prompt_version": "2026-07-17.5",
         "response_sha256_verification": "byte_exact_evidence",
         "selection_as_of": "2026-07-15",
         "valid": True,

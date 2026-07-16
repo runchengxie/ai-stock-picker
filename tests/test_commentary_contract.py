@@ -87,6 +87,100 @@ def test_generic_model_and_supplier_text_requires_actual_candidate_value(
     assert artifact.picks[0].reasoning == reasoning
 
 
+def test_cn_provider_like_concept_is_allowed_only_as_explicit_candidate_data(
+    cn_manifest: Path,
+) -> None:
+    manifest = json.loads(cn_manifest.read_text(encoding="utf-8"))
+    manifest["candidate_universe"][0]["source_concepts"] = ["DeepSeek概念"]
+    cn_manifest.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    reasoning = "关联概念：[DeepSeek概念]支持候选的相对排序。"
+
+    artifact = create_selection(plan, _cn_response(reasoning))
+
+    assert artifact.picks[0].reasoning == reasoning
+
+
+def test_us_provider_like_concept_is_allowed_only_as_explicit_candidate_data(
+    us_manifest: Path,
+) -> None:
+    manifest = json.loads(us_manifest.read_text(encoding="utf-8"))
+    manifest["candidates"][0]["source_concepts"] = ["Gemini ecosystem"]
+    us_manifest.write_text(json.dumps(manifest), encoding="utf-8")
+    plan = build_selection_plan(
+        market="US",
+        candidates_path=us_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    reasoning = (
+        "The related concepts: [Gemini ecosystem] support the relative comparison."
+    )
+
+    artifact = create_selection(plan, _us_response(reasoning))
+
+    assert artifact.picks[0].reasoning == reasoning
+
+
+@pytest.mark.parametrize(
+    ("concept", "reasoning"),
+    [
+        ("DeepSeek概念", "关联概念中的DeepSeek概念支持相对排序。"),
+        (
+            "DeepSeek概念",
+            "关联概念：[DeepSeek概念]支持排序，实际由DeepSeek解释。",
+        ),
+        ("API key", "关联概念：[API key]支持候选的相对排序。"),
+        (
+            "DeepSeek API key",
+            "关联概念：[DeepSeek API key]支持候选的相对排序。",
+        ),
+    ],
+)
+def test_candidate_data_citation_does_not_disable_system_metadata_policy(
+    cn_manifest: Path,
+    concept: str,
+    reasoning: str,
+) -> None:
+    manifest = json.loads(cn_manifest.read_text(encoding="utf-8"))
+    manifest["candidate_universe"][0]["source_concepts"] = [concept]
+    cn_manifest.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+
+    with pytest.raises(ValueError, match="forbidden system metadata"):
+        create_selection(plan, _cn_response(reasoning))
+
+
+def test_provider_like_concept_cannot_be_relabelled_as_a_topic(
+    cn_manifest: Path,
+) -> None:
+    manifest = json.loads(cn_manifest.read_text(encoding="utf-8"))
+    manifest["candidate_universe"][0]["source_concepts"] = ["DeepSeek概念"]
+    cn_manifest.write_text(json.dumps(manifest, ensure_ascii=False), encoding="utf-8")
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+
+    with pytest.raises(ValueError, match="supplied candidate value"):
+        create_selection(
+            plan,
+            _cn_response("热点主题：[DeepSeek概念]支持候选的相对排序。"),
+        )
+
+
 @pytest.mark.parametrize(
     "reasoning",
     ["热点主题显示大模型应用活跃。", "关联概念显示供应商生态活跃。"],

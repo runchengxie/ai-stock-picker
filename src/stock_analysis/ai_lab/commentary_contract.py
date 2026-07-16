@@ -86,9 +86,26 @@ def preferred_commentary_labels(
     }
 
 
+def categorical_citation_policy(market: Market) -> dict[str, dict[str, object]]:
+    """Describe the auditable citation form for confusable categorical fields."""
+
+    return {
+        field: {
+            "label": FIELD_ALIASES[field][market][0],
+            "value_source": f"same_candidate.features.{field}",
+            "required_format": (
+                f"{FIELD_ALIASES[field][market][0]}：[<one exact {field} value>]"
+            ),
+            "repeat_label_for_each_value": True,
+        }
+        for field in ("source_topics", "source_concepts")
+    }
+
+
 __all__ = [
     "COMMENTARY_POLICY",
     "FEATURE_SEMANTICS",
     "FIELD_ALIASES",
+    "categorical_citation_policy",
     "preferred_commentary_labels",
 ]

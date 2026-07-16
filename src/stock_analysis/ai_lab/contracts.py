@@ -10,7 +10,7 @@ from zoneinfo import ZoneInfo
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION = "1.0.0"
-PROMPT_VERSION: Literal["2026-07-16.4"] = "2026-07-16.4"
+PROMPT_VERSION: Literal["2026-07-17.5"] = "2026-07-17.5"
 
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
@@ -26,6 +26,7 @@ ReadablePromptVersion = Literal[
     "2026-07-15.2",
     "2026-07-15.3",
     "2026-07-16.4",
+    "2026-07-17.5",
 ]
 
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")

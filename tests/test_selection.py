@@ -213,7 +213,7 @@ def test_selection_enriches_only_from_candidates(cn_manifest: Path) -> None:
     assert artifact.upstream_execution_not_before == "next_trading_session"
     assert artifact.generated_at == created
     assert artifact.provider == "deepseek"
-    assert artifact.prompt_version == PROMPT_VERSION == "2026-07-16.4"
+    assert artifact.prompt_version == PROMPT_VERSION == "2026-07-17.5"
     assert artifact.input_count == 3
     assert artifact.requested_top_n == 2
     assert [pick.symbol for pick in artifact.picks] == ["000001.SZ", "600000.SH"]
@@ -242,7 +242,7 @@ def test_artifact_strictly_loads_previous_prompt_version(cn_manifest: Path) -> N
     loaded = SelectionArtifact.model_validate(legacy_payload, strict=True)
 
     assert loaded.prompt_version == "2026-07-15.2"
-    assert current.prompt_version == PROMPT_VERSION == "2026-07-16.4"
+    assert current.prompt_version == PROMPT_VERSION == "2026-07-17.5"
     with pytest.raises(ValueError, match="current prompt version"):
         write_selection(loaded, cn_manifest.parent / "legacy-selection.json")
     assert not (cn_manifest.parent / "legacy-selection.json").exists()

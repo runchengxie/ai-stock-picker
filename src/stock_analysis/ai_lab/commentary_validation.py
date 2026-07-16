@@ -109,17 +109,21 @@ _STABILITY_LOW_INVERSION = re.compile(
     r"风险低|风险越低|风险更低|风险较低|低风险|波动越小|波动更小|波动较小|"
     r"越稳定|更稳定|稳定性更高)"
 )
-_FORBIDDEN_COMPACT_TERMS = frozenset(
+_FORBIDDEN_IDENTITY_COMPACT_TERMS = frozenset(
     {
         "anthropic",
-        "apikey",
-        "bearertoken",
         "chatgpt",
         "claude",
-        "credential",
         "deepseek",
         "gemini",
         "openai",
+    }
+)
+_FORBIDDEN_CREDENTIAL_COMPACT_TERMS = frozenset(
+    {
+        "apikey",
+        "bearertoken",
+        "credential",
         "password",
         "secret",
         "token",
@@ -129,6 +133,9 @@ _FORBIDDEN_COMPACT_TERMS = frozenset(
         "凭据",
         "令牌",
     }
+)
+_FORBIDDEN_COMPACT_TERMS = (
+    _FORBIDDEN_IDENTITY_COMPACT_TERMS | _FORBIDDEN_CREDENTIAL_COMPACT_TERMS
 )
 _KNOWN_GROUNDING_FIELDS = frozenset(FIELD_ALIASES)
 _VALUE_BOUND_FIELDS = frozenset(
@@ -203,7 +210,14 @@ def validate_customer_commentary(
         _require_candidate_values(field, sentence, candidate, mentioned_fields)
         _reject_unsupplied_sensitive_categories(field, sentence, candidate)
 
-    _reject_system_metadata_terms(field, normalized, provider, model)
+    policy_scan_value = _mask_explicit_candidate_identity_citations(
+        normalized,
+        candidate,
+        market=market,
+        provider=provider,
+        model=model,
+    )
+    _reject_system_metadata_terms(field, policy_scan_value, provider, model)
 
 
 def validate_legacy_customer_commentary(
@@ -346,6 +360,56 @@ def _candidate_values(candidate: Candidate, field: str) -> tuple[str, ...]:
     return ()
 
 
+def _mask_explicit_candidate_identity_citations(
+    value: str,
+    candidate: Candidate,
+    *,
+    market: Market,
+    provider: Provider,
+    model: str,
+) -> str:
+    """Mask only auditable field/value citations of supplied identity-like data."""
+
+    dynamic_terms = {
+        compact_term
+        for raw_term in (provider, model)
+        if len(compact_term := _compact_for_policy_scan(raw_term)) >= 4
+    }
+    identity_terms = _FORBIDDEN_IDENTITY_COMPACT_TERMS | dynamic_terms
+    masked = value
+    for candidate_field in sorted(_VALUE_BOUND_FIELDS):
+        references = (candidate_field, *FIELD_ALIASES[candidate_field][market])
+        candidate_values = sorted(
+            _candidate_values(candidate, candidate_field),
+            key=len,
+            reverse=True,
+        )
+        for candidate_value in candidate_values:
+            normalized_value = unicodedata.normalize("NFKC", candidate_value)
+            compact_value = _compact_for_policy_scan(normalized_value)
+            contains_identity = any(term in compact_value for term in identity_terms)
+            contains_credential_term = any(
+                term in compact_value for term in _FORBIDDEN_CREDENTIAL_COMPACT_TERMS
+            )
+            if not contains_identity or contains_credential_term:
+                continue
+            for reference in references:
+                normalized_reference = unicodedata.normalize("NFKC", reference)
+                reference_pattern = _bounded_literal_pattern(normalized_reference)
+                citation_pattern = re.compile(
+                    rf"(?i)(?P<prefix>{reference_pattern}\s*[:：]\s*\[\s*)"
+                    rf"(?P<value>{re.escape(normalized_value)})(?P<suffix>\s*\])"
+                )
+                masked = citation_pattern.sub(
+                    lambda match: (
+                        f"{match.group('prefix')}supplied candidate value"
+                        f"{match.group('suffix')}"
+                    ),
+                    masked,
+                )
+    return masked
+
+
 def _reject_unknown_coordinated_values(
     output_field: str,
     sentence: str,
@@ -429,13 +493,18 @@ def _contains_field_reference(value: str, field: str) -> bool:
 
 def _contains_literal_reference(value: str, literal: str) -> bool:
     normalized = unicodedata.normalize("NFKC", literal)
+    pattern = _bounded_literal_pattern(normalized)
+    return re.search(rf"(?i){pattern}", value) is not None
+
+
+def _bounded_literal_pattern(normalized: str) -> str:
     left = (
         r"(?<![a-z0-9])" if normalized[0].isascii() and normalized[0].isalnum() else ""
     )
     right = (
         r"(?![a-z0-9])" if normalized[-1].isascii() and normalized[-1].isalnum() else ""
     )
-    return re.search(rf"(?i){left}{re.escape(normalized)}{right}", value) is not None
+    return rf"{left}{re.escape(normalized)}{right}"
 
 
 def _contains_url_email_or_ip(value: str) -> bool:
