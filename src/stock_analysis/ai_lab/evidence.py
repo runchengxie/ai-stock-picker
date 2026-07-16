@@ -12,13 +12,18 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Literal, cast
 
+from .alias_contracts import alias_maps_sha256
 from .contracts import Market, SelectionArtifact, Style
 from .evidence_consistency import (
     EVIDENCE_SCHEMA_VERSION,
+    LEGACY_EVIDENCE_SCHEMA_VERSION,
     validate_selection_evidence,
 )
 from .evidence_consistency import (
     candidate_available_at as _candidate_available_at,
+)
+from .evidence_consistency import (
+    deepseek_inference_kwargs as _deepseek_inference_kwargs,
 )
 from .evidence_consistency import (
     inside as _inside,
@@ -44,7 +49,8 @@ from .evidence_consistency import (
 from .evidence_consistency import (
     validated_bundle as _validated_bundle,
 )
-from .providers import ProviderExchange
+from .evidence_contracts import selection_contracts as _selection_contracts
+from .providers import ProviderExchange, ProviderParameterSchema
 from .selection import (
     LEGACY_STABILITY_PROMPT_VERSION,
     SelectionPlan,
@@ -58,7 +64,8 @@ from .stability_support import (
     validate_opaque_trial as _validate_opaque_trial,
 )
 
-STABILITY_SCHEMA_VERSION = "1.0.0"
+LEGACY_STABILITY_SCHEMA_VERSION = "1.0.0"
+STABILITY_SCHEMA_VERSION = "2.0.0"
 DEFAULT_SHUFFLE_SEEDS = (101, 202, 303)
 DEFAULT_OPAQUE_SEED = 404
 _CAMPAIGN_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -80,6 +87,13 @@ def write_selection_evidence(
     if artifact.lineage.response_sha256 != _digest(exchange.response_text.encode()):
         raise ValueError("selection response hash does not match the model response")
     _validate_complete_artifact(plan, exchange.response_text, artifact)
+    contracts, diagnostic = _selection_contracts(
+        plan,
+        exchange,
+        generated_at=artifact.generated_at,
+    )
+    if contracts["publication_contract"] != "passed" or diagnostic is not None:
+        raise ValueError("complete evidence failed independent publication validation")
     files = _exchange_files(plan, exchange)
     files["selection.json"] = artifact.model_dump_json(indent=2).encode("utf-8") + b"\n"
     manifest = _selection_manifest(
@@ -90,6 +104,7 @@ def write_selection_evidence(
         available_at=artifact.generated_at,
         selection_path="selection.json",
         rejection=None,
+        contracts=contracts,
     )
     return _write_bundle(output_dir, files, manifest)
 
@@ -111,6 +126,15 @@ def write_rejected_selection_evidence(
     reason = rejection or exchange.extraction_error or "selection_validation_failed"
     _validate_rejection(exchange, reason)
     files = _exchange_files(plan, exchange)
+    contracts, diagnostic = _selection_contracts(
+        plan,
+        exchange,
+        generated_at=created.astimezone(timezone.utc),
+    )
+    if contracts["publication_contract"] == "passed":
+        raise ValueError("valid publication response cannot be archived as rejected")
+    if diagnostic is not None:
+        files["ranking_diagnostic.json"] = diagnostic
     manifest = _selection_manifest(
         plan,
         exchange,
@@ -119,6 +143,7 @@ def write_rejected_selection_evidence(
         available_at=created.astimezone(timezone.utc),
         selection_path=None,
         rejection=reason,
+        contracts=contracts,
     )
     return _write_bundle(output_dir, files, manifest)
 
@@ -279,6 +304,26 @@ def load_stability_trial(trial_path: str | Path) -> SelectionPlan:
         raise ValueError("trial name_aliases must be a string map")
     market = cast(Market, trial.get("market"))
     style = cast(Style, trial.get("style"))
+    trial_schema = str(trial.get("schema_version") or "")
+    if trial_schema not in {
+        LEGACY_STABILITY_SCHEMA_VERSION,
+        STABILITY_SCHEMA_VERSION,
+    }:
+        raise ValueError("trial schema_version is invalid")
+    inference = (
+        _deepseek_inference_kwargs(trial.get("provider_parameters"))
+        if market == "CN"
+        and trial_schema == STABILITY_SCHEMA_VERSION
+        and trial.get("provider_parameter_schema", "explicit_v2") == "explicit_v2"
+        else None
+    )
+    parameter_schema = (
+        "legacy_v1"
+        if trial_schema == LEGACY_STABILITY_SCHEMA_VERSION
+        else str(trial.get("provider_parameter_schema", "explicit_v2"))
+    )
+    if parameter_schema not in {"legacy_v1", "explicit_v2"}:
+        raise ValueError("trial provider_parameter_schema is invalid")
     plan = build_selection_plan(
         market=market,
         candidates_path=candidate_path,
@@ -286,10 +331,21 @@ def load_stability_trial(trial_path: str | Path) -> SelectionPlan:
         top_n=_strict_int(trial.get("top_n"), "top_n"),
         style=style,
         model=str(trial.get("model") or ""),
+        provider_parameter_schema=cast(ProviderParameterSchema, parameter_schema),
+        thinking=inference["thinking"] if inference is not None else None,
+        reasoning_effort=(
+            inference["reasoning_effort"] if inference is not None else None
+        ),
+        max_tokens=inference["max_tokens"] if inference is not None else None,
         presentation_order=presentation,
         symbol_aliases=cast(dict[str, str], raw_aliases),
         name_aliases=cast(dict[str, str], raw_name_aliases),
         prompt_profile="legacy_stability_v3",
+        source_candidate_path=str(trial.get("source_candidate_path") or candidate_path),
+        campaign_id=str(trial.get("campaign_id") or "") or None,
+        trial_id=str(trial.get("trial_id") or "") or None,
+        plan_sha256=_digest(path.read_bytes()),
+        research_only=True,
     )
     expected_prompt = prompt_path.read_bytes()
     if plan.prompt.encode() != expected_prompt:
@@ -302,6 +358,16 @@ def load_stability_trial(trial_path: str | Path) -> SelectionPlan:
         or trial.get("prompt_profile") != "legacy_stability_v3"
     ):
         raise ValueError("trial runtime identity is incompatible")
+    expected_parameters = _provider_parameters(
+        plan,
+        evidence_schema_version=(
+            EVIDENCE_SCHEMA_VERSION
+            if trial_schema == STABILITY_SCHEMA_VERSION
+            else LEGACY_EVIDENCE_SCHEMA_VERSION
+        ),
+    )
+    if trial.get("provider_parameters") != expected_parameters:
+        raise ValueError("trial provider parameters are incompatible")
     return plan
 
 
@@ -309,6 +375,12 @@ def validate_stability_campaign(output_dir: str | Path) -> dict[str, object]:
     """Fail closed unless the frozen preregistered five-arm campaign is unchanged."""
 
     root, manifest = _validated_bundle(output_dir, "ai_stability_campaign")
+    campaign_schema = str(manifest.get("schema_version") or "")
+    if campaign_schema not in {
+        LEGACY_STABILITY_SCHEMA_VERSION,
+        STABILITY_SCHEMA_VERSION,
+    }:
+        raise ValueError("stability campaign schema_version is invalid")
     if manifest.get("status") != "planned" or manifest.get("api_calls") != 0:
         raise ValueError("stability campaign status is invalid")
     variants = manifest.get("variants")
@@ -336,6 +408,7 @@ def validate_stability_campaign(output_dir: str | Path) -> dict[str, object]:
         variants,
         campaign_id=campaign_id,
         expected_seed_by_id=expected_seed_by_id,
+        campaign_schema=campaign_schema,
     )
     if observed_ids != expected_ids:
         raise ValueError("stability campaign arm identities are invalid")
@@ -343,6 +416,19 @@ def validate_stability_campaign(output_dir: str | Path) -> dict[str, object]:
     canonical_trial = _read_object(root / "trials/canonical/trial.json")
     canonical_candidate_path = _inside(
         root, str(canonical_trial.get("candidate_path") or "")
+    )
+    canonical_inference = (
+        _deepseek_inference_kwargs(canonical_trial.get("provider_parameters"))
+        if canonical_trial.get("market") == "CN"
+        and campaign_schema == STABILITY_SCHEMA_VERSION
+        and canonical_trial.get("provider_parameter_schema", "explicit_v2")
+        == "explicit_v2"
+        else None
+    )
+    canonical_parameter_schema = (
+        "legacy_v1"
+        if campaign_schema == LEGACY_STABILITY_SCHEMA_VERSION
+        else str(canonical_trial.get("provider_parameter_schema", "explicit_v2"))
     )
     canonical_plan = build_selection_plan(
         market=cast(Market, canonical_trial.get("market")),
@@ -353,6 +439,22 @@ def validate_stability_campaign(output_dir: str | Path) -> dict[str, object]:
         top_n=_strict_int(canonical_trial.get("top_n"), "top_n"),
         style=cast(Style, canonical_trial.get("style")),
         model=str(canonical_trial.get("model") or ""),
+        provider_parameter_schema=cast(
+            ProviderParameterSchema, canonical_parameter_schema
+        ),
+        thinking=(
+            canonical_inference["thinking"] if canonical_inference is not None else None
+        ),
+        reasoning_effort=(
+            canonical_inference["reasoning_effort"]
+            if canonical_inference is not None
+            else None
+        ),
+        max_tokens=(
+            canonical_inference["max_tokens"]
+            if canonical_inference is not None
+            else None
+        ),
         prompt_profile="legacy_stability_v3",
     )
     if canonical != canonical_plan.presentation_order:
@@ -373,6 +475,7 @@ def _validate_campaign_variants(
     *,
     campaign_id: str,
     expected_seed_by_id: Mapping[str, int | None],
+    campaign_schema: str,
 ) -> tuple[list[str], dict[str, tuple[str, ...]]]:
     observed_ids: list[str] = []
     orders: dict[str, tuple[str, ...]] = {}
@@ -384,6 +487,8 @@ def _validate_campaign_variants(
         if trial_path.name != "trial.json":
             raise ValueError("stability trial path is invalid")
         trial = _read_object(trial_path)
+        if trial.get("schema_version") != campaign_schema:
+            raise ValueError("stability trial schema_version mismatch")
         trial_id = trial.get("trial_id")
         if not isinstance(trial_id, str):
             raise ValueError("stability trial_id is invalid")
@@ -427,10 +532,18 @@ def _stability_variant(
         top_n=base_plan.top_n,
         style=base_plan.style,
         model=base_plan.model,
+        provider_parameter_schema=base_plan.provider_parameter_schema,
+        thinking=base_plan.thinking,
+        reasoning_effort=base_plan.reasoning_effort,
+        max_tokens=base_plan.max_tokens,
         presentation_order=order,
         symbol_aliases=symbol_aliases,
         name_aliases=name_aliases,
         prompt_profile="legacy_stability_v3",
+        source_candidate_path=base_plan.source_candidate_path,
+        campaign_id=campaign_id,
+        trial_id=trial_id,
+        research_only=True,
     )
     if plan.universe.input_sha256 != base_plan.universe.input_sha256:
         raise ValueError("candidate input changed while building stability campaign")
@@ -445,7 +558,8 @@ def _stability_variant(
         "market": plan.market,
         "provider": plan.provider,
         "model": plan.model,
-        "provider_parameters": _provider_parameters(plan.provider),
+        "provider_parameters": _provider_parameters(plan),
+        "provider_parameter_schema": plan.provider_parameter_schema,
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
         "selection_as_of": plan.universe.selection_as_of.isoformat(),
@@ -453,6 +567,7 @@ def _stability_variant(
         "top_n": plan.top_n,
         "seed": seed,
         "candidate_path": candidate_name,
+        "source_candidate_path": plan.source_candidate_path,
         "input_sha256": plan.universe.input_sha256,
         "presentation_order": list(plan.presentation_order),
         "symbol_aliases": dict(plan.symbol_aliases),
@@ -536,6 +651,7 @@ def _selection_manifest(
     available_at: datetime,
     selection_path: str | None,
     rejection: str | None,
+    contracts: Mapping[str, str],
 ) -> dict[str, object]:
     candidate_name = f"candidate_input{plan.universe.path.suffix.lower()}"
     return {
@@ -552,13 +668,24 @@ def _selection_manifest(
         "requested_model_alias": exchange.model,
         "response_model": exchange.actual_model,
         "response_extraction_error": exchange.extraction_error,
-        "provider_parameters": _provider_parameters(plan.provider),
+        "provider_parameters": _provider_parameters(plan),
+        "provider_parameter_schema": plan.provider_parameter_schema,
+        "campaign_id": plan.campaign_id,
+        "trial_id": plan.trial_id,
+        "plan_sha256": plan.plan_sha256,
+        **contracts,
+        "ranking_diagnostic_path": (
+            "ranking_diagnostic.json"
+            if contracts["ranking_contract"] == "passed"
+            and contracts["publication_contract"] == "failed"
+            else None
+        ),
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
         "style": plan.style,
         "top_n": plan.top_n,
         "candidate_path": candidate_name,
-        "source_candidate_path": str(plan.universe.path),
+        "source_candidate_path": plan.source_candidate_path,
         "input_contract": plan.universe.input_contract,
         "input_count": len(plan.universe.candidates),
         "input_sha256": plan.universe.input_sha256,
@@ -572,11 +699,14 @@ def _selection_manifest(
         "presentation_order": list(plan.presentation_order),
         "symbol_aliases": dict(plan.symbol_aliases),
         "name_aliases": dict(plan.name_aliases),
+        "alias_maps_sha256": alias_maps_sha256(
+            dict(plan.symbol_aliases), dict(plan.name_aliases)
+        ),
         "selection_path": selection_path,
         "rejection": rejection,
         "api_calls": 1,
         "eligible_as_oos_evidence": False,
-        "research_only": plan.prompt_profile != "production_v4",
+        "research_only": plan.research_only or plan.prompt_profile != "production_v4",
         "files": _file_records(files),
     }
 

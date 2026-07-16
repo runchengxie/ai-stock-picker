@@ -57,8 +57,34 @@ uv run aipick cn pick \
   --output /absolute/path/cn_selection.json \
   --as-of 2026-07-15 \
   --top-n 10 \
-  --style momentum
+  --style momentum \
+  --model deepseek-v4-flash \
+  --thinking disabled \
+  --max-tokens 8192
 ```
+
+A 股默认使用 `deepseek-v4-flash`，并显式关闭推理模式。开启推理模式时可以选择
+`high` 或 `max`，此时请求不会发送 `temperature`。`max_tokens` 必须在 1 至 65,536
+之间。
+
+```bash
+uv run aipick cn pick \
+  --candidates /absolute/path/cn_candidates.json \
+  --output /absolute/path/cn_selection.json \
+  --as-of 2026-07-15 \
+  --top-n 10 \
+  --style momentum \
+  --model deepseek-v4-pro \
+  --thinking enabled \
+  --reasoning-effort max \
+  --max-tokens 32768
+```
+
+需要批量回放时，先用 `pick-plan` 冻结候选池、Prompt、展示顺序、模型和推理参数。
+该命令不读取凭据，也不会访问网络。生成的 `plan.json` 可交给 `trial` 执行，运行时不能
+覆盖已经冻结的模型或推理参数。匿名对照可以同时传入完整的股票代码映射和名称映射，
+冻结后的完整 Prompt 不得出现真实代码或名称。完整示例见
+[证据归档与稳定性试验](docs/evidence-and-stability.md)。
 
 美股命令只读取 `GEMINI_API_KEY`：
 
@@ -95,6 +121,10 @@ uv run aipick us pick \
 正文、模型服务原始响应、请求模型别名、响应实际模型、模型正文、选择结果和逐文件哈希。
 凭据不会写入证据目录。HTTP 调用成功但响应格式无效时，原始响应会保存为拒绝证据，结果
 文件不会生成。
+
+证据清单分别记录传输、排序和发布三层合同。模型返回的股票顺序有效，但展示文案未通过
+校验时，证据仍保持 `rejected`，并保存只含股票顺序的 `ranking_diagnostic.json`。
+该文件用于研究诊断，不会替代正式的 `selection.json`。
 
 `reasoning` 和 `risk_note` 是仅基于候选字段的 AI 解读，未经独立事实核验，
 不应包装成已核验事实或投资建议。每个句子可以使用获批的中英文自然标签引用候选字段，

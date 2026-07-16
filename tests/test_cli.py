@@ -9,7 +9,7 @@ from typing import Any
 
 import pytest
 
-from stock_analysis.ai_lab.providers import ProviderExchange
+from stock_analysis.ai_lab.providers import DEEPSEEK_SYSTEM_MESSAGE, ProviderExchange
 from stock_analysis.ai_lab.selection import (
     SelectionPlan,
     build_selection_plan,
@@ -23,23 +23,28 @@ def _exchange(
 ) -> ProviderExchange:
     request = json.dumps(
         {
-            "model": "deepseek-chat",
-            "messages": [{"role": "user", "content": prompt}],
+            "model": "deepseek-v4-flash",
+            "messages": [
+                {"role": "system", "content": DEEPSEEK_SYSTEM_MESSAGE},
+                {"role": "user", "content": prompt},
+            ],
             "temperature": 0.2,
+            "thinking": {"type": "disabled"},
+            "max_tokens": 8192,
             "response_format": {"type": "json_object"},
         },
         ensure_ascii=False,
     ).encode()
     raw_response = json.dumps(
         {
-            "model": "deepseek-chat-20260715",
+            "model": "deepseek-v4-flash-20260715",
             "choices": [{"message": {"content": response}}],
         },
         ensure_ascii=False,
     ).encode()
     return ProviderExchange(
         provider="deepseek",
-        model="deepseek-chat",
+        model="deepseek-v4-flash",
         endpoint="https://api.deepseek.com/v1/chat/completions",
         request_method="POST",
         request_headers=(
@@ -49,7 +54,7 @@ def _exchange(
         request_body=request,
         response_body=raw_response,
         response_text=response,
-        actual_model="deepseek-chat-20260715",
+        actual_model="deepseek-v4-flash-20260715",
         extraction_error=None,
         timeout_seconds=timeout,
     )
@@ -688,10 +693,14 @@ def test_live_path_uses_market_specific_key_from_credential_file(
         prompt: str,
         *,
         model: str,
+        thinking: str,
+        reasoning_effort: str | None,
+        max_tokens: int,
+        parameter_schema: str,
         timeout: float,
         api_key: str | None = None,
     ) -> ProviderExchange:
-        del model
+        del model, thinking, reasoning_effort, max_tokens, parameter_schema
         observed.append(api_key)
         return _exchange(prompt, response, timeout=timeout)
 

@@ -11,13 +11,27 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 Transport = Callable[[urllib.request.Request, float], bytes]
+ThinkingMode = Literal["enabled", "disabled"]
+ReasoningEffort = Literal["high", "max"]
+ProviderParameterSchema = Literal["legacy_v1", "explicit_v2"]
 
 _MODEL_NAME = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_HTTP_RESPONSE_BYTES = 2_000_000
+DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
+DEFAULT_DEEPSEEK_THINKING: ThinkingMode = "disabled"
+DEFAULT_DEEPSEEK_MAX_TOKENS = 8_192
+MAX_DEEPSEEK_MAX_TOKENS = 65_536
+DEEPSEEK_SYSTEM_MESSAGE = (
+    "You rerank only the supplied candidate universe. "
+    "Return strict JSON and never invent a symbol."
+)
+GEMINI_SYSTEM_MESSAGE = (
+    "Rerank only supplied candidates. Return strict JSON and never invent a symbol."
+)
 
 
 class ProviderError(RuntimeError):
@@ -44,7 +58,11 @@ class ProviderExchange:
 def call_deepseek(
     prompt: str,
     *,
-    model: str = "deepseek-chat",
+    model: str = DEFAULT_DEEPSEEK_MODEL,
+    thinking: ThinkingMode = DEFAULT_DEEPSEEK_THINKING,
+    reasoning_effort: ReasoningEffort | None = None,
+    max_tokens: int = DEFAULT_DEEPSEEK_MAX_TOKENS,
+    parameter_schema: ProviderParameterSchema = "explicit_v2",
     timeout: float = 120,
     transport: Transport | None = None,
     api_key: str | None = None,
@@ -54,6 +72,10 @@ def call_deepseek(
     exchange = call_deepseek_exchange(
         prompt,
         model=model,
+        thinking=thinking,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
+        parameter_schema=parameter_schema,
         timeout=timeout,
         transport=transport,
         api_key=api_key,
@@ -66,7 +88,11 @@ def call_deepseek(
 def call_deepseek_exchange(
     prompt: str,
     *,
-    model: str = "deepseek-chat",
+    model: str = DEFAULT_DEEPSEEK_MODEL,
+    thinking: ThinkingMode = DEFAULT_DEEPSEEK_THINKING,
+    reasoning_effort: ReasoningEffort | None = None,
+    max_tokens: int = DEFAULT_DEEPSEEK_MAX_TOKENS,
+    parameter_schema: ProviderParameterSchema = "explicit_v2",
     timeout: float = 120,
     transport: Transport | None = None,
     api_key: str | None = None,
@@ -76,20 +102,22 @@ def call_deepseek_exchange(
     credential = _resolve_api_key(api_key, "DEEPSEEK_API_KEY", "CN")
     _validate_model(model)
     _validate_request(prompt, timeout)
+    inference = deepseek_request_parameters(
+        parameter_schema=parameter_schema,
+        thinking=thinking,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
+    )
     payload: dict[str, object] = {
         "model": model,
         "messages": [
             {
                 "role": "system",
-                "content": (
-                    "You rerank only the supplied candidate universe. "
-                    "Return strict JSON and never invent a symbol."
-                ),
+                "content": DEEPSEEK_SYSTEM_MESSAGE,
             },
             {"role": "user", "content": prompt},
         ],
-        "temperature": 0.2,
-        "response_format": {"type": "json_object"},
+        **inference,
     }
     endpoint = "https://api.deepseek.com/v1/chat/completions"
     request_body, response_body = _post_raw(
@@ -126,6 +154,62 @@ def call_deepseek_exchange(
         actual_model=actual_model,
         extraction_error=extraction_error,
         timeout_seconds=timeout,
+    )
+
+
+def deepseek_provider_parameters(
+    *,
+    thinking: ThinkingMode,
+    reasoning_effort: ReasoningEffort | None,
+    max_tokens: int,
+) -> dict[str, object]:
+    """Validate and serialize the inference parameters sent to DeepSeek."""
+
+    if thinking not in {"enabled", "disabled"}:
+        raise ValueError("thinking must be enabled or disabled")
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+        raise ValueError("max_tokens must be an integer")
+    if not 1 <= max_tokens <= MAX_DEEPSEEK_MAX_TOKENS:
+        raise ValueError(f"max_tokens must be between 1 and {MAX_DEEPSEEK_MAX_TOKENS}")
+    parameters: dict[str, object] = {
+        "thinking": {"type": thinking},
+        "max_tokens": max_tokens,
+        "response_format": {"type": "json_object"},
+    }
+    if thinking == "enabled":
+        if reasoning_effort not in {"high", "max"}:
+            raise ValueError("reasoning_effort must be high or max when thinking")
+        parameters["reasoning_effort"] = reasoning_effort
+    else:
+        if reasoning_effort is not None:
+            raise ValueError("reasoning_effort requires thinking enabled")
+        parameters["temperature"] = 0.2
+    return parameters
+
+
+def deepseek_request_parameters(
+    *,
+    parameter_schema: ProviderParameterSchema,
+    thinking: ThinkingMode,
+    reasoning_effort: ReasoningEffort | None,
+    max_tokens: int,
+) -> dict[str, object]:
+    """Serialize either the frozen legacy request or current explicit parameters."""
+
+    if parameter_schema == "legacy_v1":
+        if (
+            thinking != DEFAULT_DEEPSEEK_THINKING
+            or reasoning_effort is not None
+            or max_tokens != DEFAULT_DEEPSEEK_MAX_TOKENS
+        ):
+            raise ValueError("legacy_v1 does not accept explicit inference overrides")
+        return {"temperature": 0.2, "response_format": {"type": "json_object"}}
+    if parameter_schema != "explicit_v2":
+        raise ValueError("unsupported DeepSeek parameter schema")
+    return deepseek_provider_parameters(
+        thinking=thinking,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
     )
 
 
@@ -175,16 +259,7 @@ def call_gemini_exchange(
             "temperature": 0.2,
             "responseMimeType": "application/json",
         },
-        "systemInstruction": {
-            "parts": [
-                {
-                    "text": (
-                        "Rerank only supplied candidates. Return strict JSON and "
-                        "never invent a symbol."
-                    )
-                }
-            ]
-        },
+        "systemInstruction": {"parts": [{"text": GEMINI_SYSTEM_MESSAGE}]},
     }
     request_body, response_body = _post_raw(
         url,

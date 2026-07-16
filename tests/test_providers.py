@@ -91,6 +91,11 @@ def test_deepseek_uses_fixed_https_endpoint_and_parses_response(
     assert unredirected["Authorization"] == "Bearer deepseek-secret"
     assert timeout == 7.0
     assert payload["model"] == "deepseek-chat"
+    assert payload["thinking"] == {"type": "disabled"}
+    assert payload["max_tokens"] == 8192
+    assert payload["temperature"] == 0.2
+    assert payload["response_format"] == {"type": "json_object"}
+    assert "reasoning_effort" not in payload
 
 
 def test_deepseek_exchange_records_actual_model_and_preserves_invalid_raw_body(
@@ -108,7 +113,7 @@ def test_deepseek_exchange_records_actual_model_and_preserves_invalid_raw_body(
         "prompt",
         transport=lambda _request, _timeout: complete_body,
     )
-    assert complete.model == "deepseek-chat"
+    assert complete.model == "deepseek-v4-flash"
     assert complete.actual_model == "deepseek-v3.1"
     assert complete.extraction_error is None
 

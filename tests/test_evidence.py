@@ -20,7 +20,11 @@ from stock_analysis.ai_lab.evidence import (
     write_selection_evidence,
     write_stability_campaign,
 )
-from stock_analysis.ai_lab.providers import ProviderExchange
+from stock_analysis.ai_lab.providers import (
+    DEEPSEEK_SYSTEM_MESSAGE,
+    GEMINI_SYSTEM_MESSAGE,
+    ProviderExchange,
+)
 from stock_analysis.ai_lab.selection import (
     LEGACY_STABILITY_PROMPT_VERSION,
     build_selection_plan,
@@ -47,26 +51,28 @@ def _response(symbol: str) -> str:
 def _exchange(prompt: str, response: str) -> ProviderExchange:
     request = json.dumps(
         {
-            "model": "deepseek-chat",
+            "model": "deepseek-v4-flash",
             "messages": [
-                {"role": "system", "content": "fixed"},
+                {"role": "system", "content": DEEPSEEK_SYSTEM_MESSAGE},
                 {"role": "user", "content": prompt},
             ],
             "temperature": 0.2,
+            "thinking": {"type": "disabled"},
+            "max_tokens": 8192,
             "response_format": {"type": "json_object"},
         },
         ensure_ascii=False,
     ).encode()
     response_body = json.dumps(
         {
-            "model": "deepseek-chat-20260715",
+            "model": "deepseek-v4-flash-20260715",
             "choices": [{"message": {"content": response}}],
         },
         ensure_ascii=False,
     ).encode()
     return ProviderExchange(
         provider="deepseek",
-        model="deepseek-chat",
+        model="deepseek-v4-flash",
         endpoint="https://api.deepseek.com/v1/chat/completions",
         request_method="POST",
         request_headers=(
@@ -76,7 +82,7 @@ def _exchange(prompt: str, response: str) -> ProviderExchange:
         request_body=request,
         response_body=response_body,
         response_text=response,
-        actual_model="deepseek-chat-20260715",
+        actual_model="deepseek-v4-flash-20260715",
         extraction_error=None,
         timeout_seconds=17.0,
     )
@@ -90,7 +96,7 @@ def _gemini_exchange(prompt: str, response: str) -> ProviderExchange:
                 "temperature": 0.2,
                 "responseMimeType": "application/json",
             },
-            "systemInstruction": {"parts": [{"text": "fixed"}]},
+            "systemInstruction": {"parts": [{"text": GEMINI_SYSTEM_MESSAGE}]},
         },
         ensure_ascii=False,
     ).encode()
@@ -144,13 +150,19 @@ def test_complete_evidence_is_byte_exact_append_only_and_validated(
     manifest = validate_selection_evidence(output)
 
     assert manifest["status"] == "complete"
-    assert manifest["requested_model_alias"] == "deepseek-chat"
-    assert manifest["response_model"] == "deepseek-chat-20260715"
+    assert manifest["requested_model_alias"] == "deepseek-v4-flash"
+    assert manifest["response_model"] == "deepseek-v4-flash-20260715"
     assert manifest["response_extraction_error"] is None
     assert manifest["api_calls"] == 1
+    assert manifest["transport_contract"] == "passed"
+    assert manifest["ranking_contract"] == "passed"
+    assert manifest["publication_contract"] == "passed"
+    assert manifest["ranking_diagnostic_path"] is None
     assert manifest["available_at"] == "2026-07-15T02:00:00+00:00"
     assert manifest["provider_parameters"] == {
         "temperature": 0.2,
+        "thinking": {"type": "disabled"},
+        "max_tokens": 8192,
         "response_format": {"type": "json_object"},
     }
     assert (output / "candidate_input.json").read_bytes() == cn_manifest.read_bytes()
@@ -247,12 +259,13 @@ def test_complete_evidence_revalidates_selection_lineage(
         validate_selection_evidence(output)
 
 
-def test_complete_evidence_requires_request_to_contain_exact_prompt(
-    cn_manifest: Path, tmp_path: Path
+@pytest.mark.parametrize("message_index", [0, 1])
+def test_complete_evidence_requires_request_to_contain_exact_messages(
+    message_index: int, cn_manifest: Path, tmp_path: Path
 ) -> None:
     output = _complete_evidence(cn_manifest, tmp_path)
     request = json.loads((output / "provider_request_body.json").read_bytes())
-    request["messages"][-1]["content"] = "changed prompt"
+    request["messages"][message_index]["content"] = "changed message"
     request_payload = json.dumps(request, ensure_ascii=False).encode()
     _rewrite_indexed_file(output, "provider_request_body.json", request_payload)
     envelope = json.loads((output / "http_request_envelope.json").read_bytes())
@@ -263,7 +276,7 @@ def test_complete_evidence_requires_request_to_contain_exact_prompt(
         json.dumps(envelope, ensure_ascii=False).encode(),
     )
 
-    with pytest.raises(ValueError, match="exact prompt"):
+    with pytest.raises(ValueError, match="exact messages"):
         validate_selection_evidence(output)
 
 

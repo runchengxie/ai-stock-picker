@@ -33,6 +33,7 @@ from .contracts import (
     validate_symbol,
 )
 from .credentials import load_provider_api_key
+from .inference_config import inference_parameters as _inference_parameters
 from .prompting import (
     build_prompt as _build_prompt,
 )
@@ -48,22 +49,31 @@ from .prompting import (
 from .prompting import (
     symbol_aliases as _symbol_aliases,
 )
+from .prompting import (
+    validate_identity_redaction as _validate_identity_redaction,
+)
 from .providers import (
+    DEFAULT_DEEPSEEK_MAX_TOKENS,
+    DEFAULT_DEEPSEEK_MODEL,
+    DEFAULT_DEEPSEEK_THINKING,
     ProviderExchange,
+    ProviderParameterSchema,
+    ReasoningEffort,
+    ThinkingMode,
     call_deepseek,
     call_deepseek_exchange,
     call_gemini,
     call_gemini_exchange,
+    deepseek_provider_parameters,
 )
 
-ProviderCaller = Callable[[str, str, float], str]
 PromptProfile = Literal["production_v4", "legacy_stability_v3"]
 LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
 _DEFAULT_MODELS: dict[Market, str] = {
-    "CN": "deepseek-chat",
+    "CN": DEFAULT_DEEPSEEK_MODEL,
     "US": "gemini-2.5-flash",
 }
 _DEFAULT_STYLES: dict[Market, Style] = {"CN": "momentum", "US": "quality"}
@@ -81,6 +91,15 @@ class SelectionPlan:
     market: Market
     provider: Provider
     model: str
+    provider_parameter_schema: ProviderParameterSchema
+    source_candidate_path: str
+    campaign_id: str | None
+    trial_id: str | None
+    plan_sha256: str | None
+    research_only: bool
+    thinking: ThinkingMode | None
+    reasoning_effort: ReasoningEffort | None
+    max_tokens: int | None
     style: Style
     top_n: int
     prompt: str
@@ -93,8 +112,6 @@ class SelectionPlan:
 
 @dataclass(frozen=True, slots=True)
 class SelectionValidationResult:
-    """Audit profile applied while revalidating a persisted artifact."""
-
     validation_profile: str
     prompt_hash_revalidated: bool
     commentary_policy_revalidated: bool
@@ -108,19 +125,23 @@ def build_selection_plan(
     top_n: int,
     style: Style | None = None,
     model: str | None = None,
+    thinking: ThinkingMode | None = None,
+    reasoning_effort: ReasoningEffort | None = None,
+    max_tokens: int | None = None,
+    provider_parameter_schema: ProviderParameterSchema = "explicit_v2",
     presentation_order: Sequence[str] | None = None,
     symbol_aliases: Mapping[str, str] | None = None,
     name_aliases: Mapping[str, str] | None = None,
     prompt_profile: PromptProfile = "production_v4",
+    source_candidate_path: str | None = None,
+    campaign_id: str | None = None,
+    trial_id: str | None = None,
+    plan_sha256: str | None = None,
+    research_only: bool = False,
 ) -> SelectionPlan:
     """Validate a candidate snapshot and build a deterministic prompt."""
 
-    selected_style = style or _DEFAULT_STYLES[market]
-    if selected_style not in _MARKET_STYLES[market]:
-        allowed = ", ".join(sorted(_MARKET_STYLES[market]))
-        raise ValueError(
-            f"style {selected_style!r} is invalid for {market}; use {allowed}"
-        )
+    selected_style = _selected_style(market, style)
     if top_n < 1:
         raise ValueError("top_n must be positive")
     universe = load_candidate_universe(
@@ -133,11 +154,21 @@ def build_selection_plan(
             f"top_n={top_n} exceeds candidate count={len(universe.candidates)}"
         )
     provider: Provider = "deepseek" if market == "CN" else "gemini"
-    selected_model = (model or _DEFAULT_MODELS[market]).strip()
-    if not selected_model:
-        raise ValueError("model must not be empty")
-    if prompt_profile not in {"production_v4", "legacy_stability_v3"}:
-        raise ValueError("unsupported prompt profile")
+    selected_model, source_path = _selection_metadata(
+        market=market,
+        model=model,
+        prompt_profile=prompt_profile,
+        source_candidate_path=source_candidate_path,
+        universe_path=universe.path,
+        plan_sha256=plan_sha256,
+    )
+    selected_thinking, selected_effort, selected_max_tokens = _inference_parameters(
+        provider,
+        thinking=thinking,
+        reasoning_effort=reasoning_effort,
+        max_tokens=max_tokens,
+        parameter_schema=provider_parameter_schema,
+    )
     order = _presentation_order(universe, market, presentation_order)
     aliases = _symbol_aliases(universe, market, symbol_aliases)
     names = _name_aliases(universe, market, name_aliases)
@@ -156,6 +187,11 @@ def build_selection_plan(
         name_aliases=dict(names),
         include_legacy_example=prompt_profile == "legacy_stability_v3",
     )
+    if aliases and names:
+        _validate_identity_redaction(
+            prompt,
+            ((candidate.symbol, candidate.name) for candidate in universe.candidates),
+        )
     if len(prompt.encode()) > _MAX_PROMPT_BYTES:
         raise ValueError("generated prompt exceeds the 2 MB safety limit")
     return SelectionPlan(
@@ -163,6 +199,15 @@ def build_selection_plan(
         market=market,
         provider=provider,
         model=selected_model,
+        provider_parameter_schema=provider_parameter_schema,
+        source_candidate_path=source_path,
+        campaign_id=campaign_id,
+        trial_id=trial_id,
+        plan_sha256=plan_sha256,
+        research_only=research_only,
+        thinking=selected_thinking,
+        reasoning_effort=selected_effort,
+        max_tokens=selected_max_tokens,
         style=selected_style,
         top_n=top_n,
         prompt=prompt,
@@ -172,6 +217,39 @@ def build_selection_plan(
         symbol_aliases=aliases,
         name_aliases=names,
     )
+
+
+def _selected_style(market: Market, style: Style | None) -> Style:
+    selected = style or _DEFAULT_STYLES[market]
+    if selected not in _MARKET_STYLES[market]:
+        allowed = ", ".join(sorted(_MARKET_STYLES[market]))
+        raise ValueError(f"style {selected!r} is invalid for {market}; use {allowed}")
+    return selected
+
+
+def _selection_metadata(
+    *,
+    market: Market,
+    model: str | None,
+    prompt_profile: PromptProfile,
+    source_candidate_path: str | None,
+    universe_path: Path,
+    plan_sha256: str | None,
+) -> tuple[str, str]:
+    selected_model = (model or _DEFAULT_MODELS[market]).strip()
+    if not selected_model:
+        raise ValueError("model must not be empty")
+    if prompt_profile not in {"production_v4", "legacy_stability_v3"}:
+        raise ValueError("unsupported prompt profile")
+    source_path = source_candidate_path or str(universe_path)
+    if not Path(source_path).is_absolute():
+        raise ValueError("source_candidate_path must be absolute")
+    if plan_sha256 is not None and (
+        len(plan_sha256) != 64
+        or any(character not in "0123456789abcdef" for character in plan_sha256)
+    ):
+        raise ValueError("plan_sha256 must be a lowercase SHA-256 digest")
+    return selected_model, source_path
 
 
 def create_selection(
@@ -234,7 +312,7 @@ def create_selection(
         input_count=len(plan.universe.candidates),
         requested_top_n=plan.top_n,
         lineage=Lineage(
-            candidate_path=str(plan.universe.path),
+            candidate_path=plan.source_candidate_path,
             input_sha256=plan.universe.input_sha256,
             candidate_symbols_sha256=plan.universe.candidate_symbols_sha256,
             prompt_sha256=prompt_hash,
@@ -242,6 +320,28 @@ def create_selection(
         ),
         picks=tuple(picks),
     )
+
+
+def ranking_symbols(plan: SelectionPlan, response_text: str) -> tuple[str, ...]:
+    """Validate the model's ranking without applying publication commentary rules."""
+
+    model_selection = _parse_response(response_text)
+    if len(model_selection.picks) != plan.top_n:
+        raise ValueError("provider output must contain exactly top_n picks")
+    candidates = {candidate.symbol for candidate in plan.universe.candidates}
+    alias_map = {alias: symbol for symbol, alias in plan.symbol_aliases}
+    symbols: list[str] = []
+    for model_pick in model_selection.picks:
+        supplied = model_pick.symbol.strip().upper()
+        symbol = validate_symbol(alias_map.get(supplied, supplied), plan.market)
+        if symbol in symbols:
+            raise ValueError(f"provider output contains duplicate symbol: {symbol}")
+        if symbol not in candidates:
+            raise ValueError(
+                f"provider output symbol is outside candidate pool: {symbol}"
+            )
+        symbols.append(symbol)
+    return tuple(symbols)
 
 
 def _create_picks(
@@ -329,7 +429,7 @@ def run_selection(
     plan: SelectionPlan,
     *,
     timeout: float = 120,
-    caller: ProviderCaller | None = None,
+    caller: Callable[[str, str, float], str] | None = None,
     generated_at: datetime | None = None,
     credential_file: str | Path | None = None,
 ) -> SelectionArtifact:
@@ -426,6 +526,11 @@ def _write_selection_payload(
 def validate_selection_artifact(
     artifact: SelectionArtifact,
     candidates_path: str | Path,
+    *,
+    presentation_order: Sequence[str] | None = None,
+    symbol_aliases: Mapping[str, str] | None = None,
+    name_aliases: Mapping[str, str] | None = None,
+    prompt_profile: PromptProfile = "production_v4",
 ) -> SelectionValidationResult:
     """Revalidate a readable artifact against its canonical candidate snapshot."""
 
@@ -436,8 +541,15 @@ def validate_selection_artifact(
         top_n=artifact.requested_top_n,
         style=artifact.style,
         model=artifact.model,
+        presentation_order=presentation_order,
+        symbol_aliases=symbol_aliases,
+        name_aliases=name_aliases,
+        prompt_profile=prompt_profile,
     )
-    prompt_hash_revalidated = artifact.prompt_version == PROMPT_VERSION
+    prompt_hash_revalidated = artifact.prompt_version == plan.prompt_version
+    commentary_revalidated = (
+        prompt_hash_revalidated and prompt_profile == "production_v4"
+    )
     _validate_artifact_candidate_lineage(
         artifact,
         plan,
@@ -446,14 +558,14 @@ def validate_selection_artifact(
     _validate_artifact_picks(
         artifact,
         plan,
-        commentary_policy_revalidated=prompt_hash_revalidated,
+        commentary_policy_revalidated=commentary_revalidated,
     )
     return SelectionValidationResult(
         validation_profile=(
             "current_full" if prompt_hash_revalidated else "legacy_read_only"
         ),
         prompt_hash_revalidated=prompt_hash_revalidated,
-        commentary_policy_revalidated=prompt_hash_revalidated,
+        commentary_policy_revalidated=commentary_revalidated,
     )
 
 
@@ -564,9 +676,14 @@ def call_plan_provider(
     if credential_file is not None:
         api_key = load_provider_api_key(plan.provider, credential_file)
         if plan.provider == "deepseek":
+            schema, thinking, effort, max_tokens = _plan_deepseek_parameters(plan)
             return call_deepseek(
                 plan.prompt,
                 model=plan.model,
+                thinking=thinking,
+                reasoning_effort=effort,
+                max_tokens=max_tokens,
+                parameter_schema=schema,
                 timeout=timeout,
                 api_key=api_key,
             )
@@ -577,7 +694,16 @@ def call_plan_provider(
             api_key=api_key,
         )
     if plan.provider == "deepseek":
-        return call_deepseek(plan.prompt, model=plan.model, timeout=timeout)
+        schema, thinking, effort, max_tokens = _plan_deepseek_parameters(plan)
+        return call_deepseek(
+            plan.prompt,
+            model=plan.model,
+            thinking=thinking,
+            reasoning_effort=effort,
+            max_tokens=max_tokens,
+            parameter_schema=schema,
+            timeout=timeout,
+        )
     return call_gemini(plan.prompt, model=plan.model, timeout=timeout)
 
 
@@ -596,9 +722,14 @@ def call_plan_provider_exchange(
         else None
     )
     if plan.provider == "deepseek":
+        schema, thinking, effort, max_tokens = _plan_deepseek_parameters(plan)
         return call_deepseek_exchange(
             plan.prompt,
             model=plan.model,
+            thinking=thinking,
+            reasoning_effort=effort,
+            max_tokens=max_tokens,
+            parameter_schema=schema,
             timeout=timeout,
             api_key=api_key,
         )
@@ -607,6 +738,31 @@ def call_plan_provider_exchange(
         model=plan.model,
         timeout=timeout,
         api_key=api_key,
+    )
+
+
+def _plan_deepseek_parameters(
+    plan: SelectionPlan,
+) -> tuple[ProviderParameterSchema, ThinkingMode, ReasoningEffort | None, int]:
+    if plan.provider_parameter_schema == "legacy_v1":
+        return (
+            "legacy_v1",
+            DEFAULT_DEEPSEEK_THINKING,
+            None,
+            DEFAULT_DEEPSEEK_MAX_TOKENS,
+        )
+    if plan.thinking is None or plan.max_tokens is None:
+        raise ValueError("DeepSeek selection plan is missing inference parameters")
+    deepseek_provider_parameters(
+        thinking=plan.thinking,
+        reasoning_effort=plan.reasoning_effort,
+        max_tokens=plan.max_tokens,
+    )
+    return (
+        plan.provider_parameter_schema,
+        plan.thinking,
+        plan.reasoning_effort,
+        plan.max_tokens,
     )
 
 
@@ -627,7 +783,6 @@ def _parse_response(response_text: str) -> ModelSelection:
 __all__ = [
     "LEGACY_STABILITY_PROMPT_VERSION",
     "PromptProfile",
-    "ProviderCaller",
     "SelectionPlan",
     "SelectionValidationResult",
     "build_selection_plan",
@@ -635,6 +790,7 @@ __all__ = [
     "call_plan_provider_exchange",
     "create_selection",
     "read_plan_candidate_snapshot",
+    "ranking_symbols",
     "run_selection",
     "validate_selection_artifact",
     "write_selection",

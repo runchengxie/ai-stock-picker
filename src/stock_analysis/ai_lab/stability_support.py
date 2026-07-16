@@ -8,6 +8,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import cast
 
+from .prompting import validate_identity_redaction
 from .selection import SelectionPlan
 
 
@@ -57,8 +58,8 @@ def validate_opaque_trial(root: Path, trial: Mapping[str, object]) -> None:
         raise ValueError("opaque trial prompt must be JSON") from exc
     if not isinstance(prompt, dict):
         raise ValueError("opaque trial prompt must be an object")
-    mapping = _identity_mapping(trial.get("identity_mapping"))
     prompt_text = prompt_path.read_text(encoding="utf-8")
+    mapping = _identity_mapping(trial.get("identity_mapping"))
     campaign_id = str(trial.get("campaign_id") or "")
     experiment_date = str(trial.get("selection_as_of") or "")
     seed = _strict_int(trial.get("seed"), "seed")
@@ -69,14 +70,19 @@ def validate_opaque_trial(root: Path, trial: Mapping[str, object]) -> None:
         material = _identity_material(campaign_id, experiment_date, symbol, seed)
         if item.get("identity_sha256") != _digest(material):
             raise ValueError("opaque trial identity hash mismatch")
-        if symbol in prompt_text or name in prompt_text:
-            raise ValueError("opaque trial prompt exposes a real candidate identity")
         symbol_aliases[symbol] = symbol_alias
         name_aliases[symbol] = name_alias
     if trial.get("symbol_aliases") != symbol_aliases:
         raise ValueError("opaque trial symbol aliases disagree with its mapping")
     if trial.get("name_aliases") != name_aliases:
         raise ValueError("opaque trial name aliases disagree with its mapping")
+    validate_identity_redaction(
+        prompt_text,
+        (
+            (_mapping_identities(item)[0], _mapping_identities(item)[1])
+            for item in mapping
+        ),
+    )
     _validate_numeric_fields(root, prompt, symbol_aliases)
 
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from typing import cast
 
 from .candidates import CandidateUniverse
@@ -387,6 +387,22 @@ def replace_universe_identities(
     return replaced
 
 
+def validate_identity_redaction(
+    prompt: str,
+    identities: Iterable[tuple[str, str]],
+) -> None:
+    """Require a rendered opaque prompt to contain no real candidate identity."""
+
+    exposed = {
+        identity
+        for symbol, name in identities
+        for identity in (symbol, name)
+        if identity in prompt
+    }
+    if exposed:
+        raise ValueError("opaque prompt exposes a real candidate identity")
+
+
 __all__ = [
     "build_prompt",
     "name_aliases",
@@ -395,4 +411,5 @@ __all__ = [
     "replace_identity_value",
     "replace_universe_identities",
     "symbol_aliases",
+    "validate_identity_redaction",
 ]

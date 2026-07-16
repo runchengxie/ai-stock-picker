@@ -144,6 +144,21 @@ production v4 只渲染一份 `score`，也不包含首行真实候选示例。l
 - 生成标准顺序、三个固定种子 shuffle 和匿名对照共五个实验臂
 - 校验证据目录完整性并拒绝覆盖
 
+### `stock_analysis.ai_lab.evidence_consistency`
+
+负责重建归档计划，核对原始请求、模型响应、清单参数、逐文件哈希和选择结果。
+旧版 evidence v1 继续按当时的请求合同验证，新写入内容使用 evidence v2。
+
+### `stock_analysis.ai_lab.evidence_contracts`
+
+分别判断传输、排序和发布三层合同。排序通过而发布失败时，生成只含股票顺序的研究诊断。
+
+### `stock_analysis.ai_lab.frozen_plan`
+
+负责写入和重建无网络 production 选择计划。冻结内容包含候选池、完整数值排名、Prompt、
+展示顺序、模型和 DeepSeek 推理参数。匿名计划还会冻结代码映射、名称映射及对应哈希，
+重建时再次检查完整 Prompt 中是否残留真实身份。
+
 ### `stock_analysis.ai_lab.stability_support`
 
 负责匿名实验臂的哈希编号、可逆身份映射、真实身份清除和数值字段一致性检查。

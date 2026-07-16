@@ -183,7 +183,7 @@ prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `sour
   "upstream_execution_not_before": "next_trading_session",
   "generated_at": "2026-07-15T02:00:00Z",
   "provider": "deepseek",
-  "model": "deepseek-chat",
+  "model": "deepseek-v4-flash",
   "prompt_version": "2026-07-16.4",
   "style": "momentum",
   "input_contract": "hot_sector_candidate_universe_v1",

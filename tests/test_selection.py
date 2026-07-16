@@ -57,7 +57,10 @@ def test_cn_plan_binds_provider_style_and_candidate_hash(cn_manifest: Path) -> N
     )
     body = json.loads(plan.prompt)
     assert plan.provider == "deepseek"
-    assert plan.model == "deepseek-chat"
+    assert plan.model == "deepseek-v4-flash"
+    assert plan.thinking == "disabled"
+    assert plan.reasoning_effort is None
+    assert plan.max_tokens == 8192
     assert body["style"] == "momentum"
     assert body["required_count"] == 2
     assert body["selection_as_of"] == "2026-07-15"
@@ -602,7 +605,7 @@ def test_run_selection_accepts_injected_provider(cn_manifest: Path) -> None:
         generated_at=datetime(2026, 7, 15, 2, tzinfo=timezone.utc),
     )
     assert artifact.picks[0].symbol == "600000.SH"
-    assert observed == [(plan.prompt, "deepseek-chat", 3.5)]
+    assert observed == [(plan.prompt, "deepseek-v4-flash", 3.5)]
 
 
 def test_write_and_reload_selection(cn_manifest: Path, tmp_path: Path) -> None:
@@ -768,11 +771,13 @@ def test_call_plan_provider_dispatches_by_market(
     )
     monkeypatch.setattr(
         "stock_analysis.ai_lab.selection.call_deepseek",
-        lambda prompt, *, model, timeout: f"cn:{model}:{timeout}:{len(prompt)}",
+        lambda prompt, **kwargs: (
+            f"cn:{kwargs['model']}:{kwargs['timeout']}:{len(prompt)}"
+        ),
     )
     monkeypatch.setattr(
         "stock_analysis.ai_lab.selection.call_gemini",
         lambda prompt, *, model, timeout: f"us:{model}:{timeout}:{len(prompt)}",
     )
-    assert call_plan_provider(cn, timeout=2).startswith("cn:deepseek-chat:2")
+    assert call_plan_provider(cn, timeout=2).startswith("cn:deepseek-v4-flash:2")
     assert call_plan_provider(us, timeout=4).startswith("us:gemini-2.5-flash:4")

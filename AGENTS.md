@@ -9,6 +9,7 @@
 ```text
 aipick cn pick
 aipick us pick
+aipick cn pick-plan
 aipick cn validate
 aipick cn validate-evidence
 aipick cn stability-plan
@@ -45,10 +46,19 @@ aipick cn trial
     顺序。
 18. 匿名臂同时替换股票代码和名称，保留标准顺序和全部数值字段，并保存基于
     `SHA256(campaign_id, date, symbol, 404)` 排序得到的可逆映射。
-19. production v4 和 legacy v3 使用独立 Prompt 配置。正式写入器只接受 v4，稳定性
-    `trial` 只使用冻结的 v3。
+19. production v4 和 legacy v3 使用独立 Prompt 配置。`trial` 可以执行冻结的
+    production `plan.json`，也可以读取旧版稳定性 `trial.json`。运行时不能覆盖冻结参数。
 20. HTTP 成功但响应正文无法提取时，必须保存脱敏后的拒绝证据和原始响应字节，不得生成
     结果文件。证据清单同时记录请求模型别名和响应实际模型标识。
+21. DeepSeek 计划必须显式保存 `thinking` 和 `max_tokens`。关闭推理时拒绝
+    `reasoning_effort`，开启推理时保存该字段，且只能使用 `high` 或 `max`。输出预算
+    上限为 65,536。
+22. DeepSeek 开启推理时不能发送 `temperature`。关闭推理时请求必须包含显式的
+    `thinking=disabled`、`max_tokens`、`temperature` 和 JSON 输出格式。
+23. 证据 v2 分别记录传输、排序和发布合同。排序通过但发布失败时，只能写入受哈希保护的
+    `ranking_diagnostic.json`，不能生成正式选择结果。
+24. production v4 匿名计划必须同时冻结完整的代码映射和名称映射，保存规范化文件、映射
+    哈希和可逆关系。完整 Prompt 中不能残留任何真实候选代码或名称。
 
 ## 主要目录
 
@@ -57,13 +67,20 @@ src/stock_analysis/
 ├── app/cli.py
 └── ai_lab/
     ├── candidates.py
+    ├── alias_contracts.py
+    ├── bundle_paths.py
     ├── commentary_contract.py
     ├── commentary_validation.py
     ├── contracts.py
     ├── credentials.py
     ├── evidence.py
+    ├── evidence_consistency.py
+    ├── evidence_contracts.py
+    ├── frozen_plan.py
+    ├── inference_config.py
     ├── prompting.py
     ├── providers.py
+    ├── request_validation.py
     ├── stability_support.py
     └── selection.py
 
@@ -76,13 +93,20 @@ docs/
 主要职责：
 
 - `candidates.py` 读取、校验和归一化候选池
+- `alias_contracts.py` 生成匿名映射的规范化字节和组合哈希
+- `bundle_paths.py` 拒绝归档目录中的路径穿越和符号链接
 - `commentary_contract.py` 定义客户文案自然标签、语义和 grounding 策略
 - `commentary_validation.py` 对逐句 grounding、候选值和客户文案安全边界 fail closed
 - `contracts.py` 定义模型输出和结果文件
 - `credentials.py` 安全读取显式 provider 凭据文件
 - `evidence.py` 写入和校验证据目录，并生成无网络稳定性试验计划
+- `evidence_consistency.py` 复验归档文件、请求参数和跨文件关系
+- `evidence_contracts.py` 分别判定传输、排序和发布合同
+- `frozen_plan.py` 写入并重建无网络 production 选择计划
+- `inference_config.py` 归一化并校验模型推理参数
 - `prompting.py` 隔离 production v4 与 legacy v3 的 Prompt 渲染
 - `providers.py` 调用 DeepSeek 与 Gemini，并保留可审计的响应信息
+- `request_validation.py` 复验归档请求的完整消息和 provider 参数
 - `stability_support.py` 生成和校验匿名身份映射
 - `selection.py` 构建选择计划、校验结果并按用途写入文件
 - `app/cli.py` 处理命令行参数和错误输出

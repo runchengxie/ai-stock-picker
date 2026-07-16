@@ -9,10 +9,20 @@ from collections.abc import Mapping
 from datetime import date, datetime, timedelta, timezone
 from hashlib import sha256
 from pathlib import Path
-from typing import cast
+from typing import TypedDict, cast
 
+from .alias_contracts import alias_maps_sha256
+from .bundle_paths import safe_bundle_path
 from .contracts import Market, SelectionArtifact, Style
-from .providers import ProviderExchange
+from .evidence_contracts import selection_contracts
+from .providers import (
+    ProviderExchange,
+    ProviderParameterSchema,
+    ReasoningEffort,
+    ThinkingMode,
+    deepseek_provider_parameters,
+)
+from .request_validation import validate_provider_request
 from .selection import (
     PromptProfile,
     SelectionPlan,
@@ -20,7 +30,11 @@ from .selection import (
     create_selection,
 )
 
-EVIDENCE_SCHEMA_VERSION = "1.0.0"
+LEGACY_EVIDENCE_SCHEMA_VERSION = "1.0.0"
+EVIDENCE_SCHEMA_VERSION = "2.0.0"
+_EVIDENCE_SCHEMA_VERSIONS = frozenset(
+    {LEGACY_EVIDENCE_SCHEMA_VERSION, EVIDENCE_SCHEMA_VERSION}
+)
 
 _REJECTION_REASONS = frozenset(
     {
@@ -30,6 +44,14 @@ _REJECTION_REASONS = frozenset(
         "provider_response_schema_invalid",
     }
 )
+
+
+class DeepSeekInferenceKwargs(TypedDict):
+    """Typed arguments reconstructed from a strict parameter record."""
+
+    thinking: ThinkingMode
+    reasoning_effort: ReasoningEffort | None
+    max_tokens: int
 
 
 def validate_complete_artifact(
@@ -69,14 +91,43 @@ def validate_selection_evidence(output_dir: str | Path) -> dict[str, object]:
     """Fail closed unless a selection evidence directory is internally consistent."""
 
     root, manifest = validated_bundle(output_dir, "ai_selection_evidence")
+    schema_version = _manifest_string(manifest, "schema_version")
+    if schema_version not in _EVIDENCE_SCHEMA_VERSIONS:
+        raise ValueError("evidence schema_version is invalid")
     status = manifest.get("status")
     if status not in {"complete", "rejected"}:
         raise ValueError("evidence status is invalid")
     plan = _archived_selection_plan(root, manifest)
     _validate_selection_manifest(manifest, plan)
     exchange = _archived_exchange(root, manifest)
-    validate_exchange(plan, exchange, require_response_text=status == "complete")
-    _validate_selection_file_set(root, manifest, exchange, status=cast(str, status))
+    validate_exchange(
+        plan,
+        exchange,
+        require_response_text=status == "complete",
+        evidence_schema_version=schema_version,
+    )
+    if schema_version == LEGACY_EVIDENCE_SCHEMA_VERSION:
+        _validate_legacy_contract_absence(manifest)
+        diagnostic = None
+    else:
+        contracts, diagnostic = selection_contracts(
+            plan,
+            exchange,
+            generated_at=_manifest_datetime(manifest, "generated_at"),
+        )
+        _validate_contract_manifest(
+            manifest,
+            contracts,
+            status=cast(str, status),
+        )
+    _validate_selection_file_set(
+        root,
+        manifest,
+        exchange,
+        status=cast(str, status),
+        diagnostic=diagnostic,
+        schema_version=schema_version,
+    )
     expected_response_sha = (
         digest(exchange.response_text.encode())
         if exchange.response_text is not None
@@ -123,6 +174,7 @@ def _archived_selection_plan(
         raise ValueError("evidence prompt profile is invalid")
     candidate_path = inside(root, _manifest_string(manifest, "candidate_path"))
     selection_as_of = _manifest_date(manifest, "selection_as_of")
+    parameter_schema, inference = _archived_inference_parameters(manifest, market_value)
     plan = build_selection_plan(
         market=cast(Market, market_value),
         candidates_path=candidate_path,
@@ -130,10 +182,21 @@ def _archived_selection_plan(
         top_n=_strict_int(manifest.get("top_n"), "top_n"),
         style=cast(Style, style_value),
         model=_manifest_string(manifest, "model"),
+        provider_parameter_schema=parameter_schema,
+        thinking=inference["thinking"] if inference is not None else None,
+        reasoning_effort=(
+            inference["reasoning_effort"] if inference is not None else None
+        ),
+        max_tokens=inference["max_tokens"] if inference is not None else None,
         presentation_order=_manifest_string_list(manifest, "presentation_order"),
         symbol_aliases=_manifest_string_map(manifest, "symbol_aliases"),
         name_aliases=_manifest_string_map(manifest, "name_aliases"),
         prompt_profile=cast(PromptProfile, profile_value),
+        source_candidate_path=_manifest_string(manifest, "source_candidate_path"),
+        campaign_id=_nullable_manifest_string(manifest, "campaign_id"),
+        trial_id=_nullable_manifest_string(manifest, "trial_id"),
+        plan_sha256=_nullable_manifest_string(manifest, "plan_sha256"),
+        research_only=_manifest_bool(manifest, "research_only"),
     )
     if plan.prompt.encode() != (root / "prompt.txt").read_bytes():
         raise ValueError("archived prompt does not match the candidate snapshot")
@@ -145,14 +208,17 @@ def _archived_selection_plan(
 def _validate_selection_manifest(
     manifest: Mapping[str, object], plan: SelectionPlan
 ) -> None:
-    if manifest.get("schema_version") != EVIDENCE_SCHEMA_VERSION:
+    schema_version = _manifest_string(manifest, "schema_version")
+    if schema_version not in _EVIDENCE_SCHEMA_VERSIONS:
         raise ValueError("evidence schema_version is invalid")
     expected: dict[str, object] = {
         "market": plan.market,
         "provider": plan.provider,
         "model": plan.model,
         "requested_model_alias": plan.model,
-        "provider_parameters": provider_parameters(plan.provider),
+        "provider_parameters": provider_parameters(
+            plan, evidence_schema_version=schema_version
+        ),
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
         "style": plan.style,
@@ -166,8 +232,20 @@ def _validate_selection_manifest(
         "prompt_sha256": digest(plan.prompt.encode()),
         "api_calls": 1,
         "eligible_as_oos_evidence": False,
-        "research_only": plan.prompt_profile != "production_v4",
+        "research_only": (
+            plan.prompt_profile != "production_v4"
+            if schema_version == LEGACY_EVIDENCE_SCHEMA_VERSION
+            else plan.research_only or plan.prompt_profile != "production_v4"
+        ),
     }
+    if schema_version == EVIDENCE_SCHEMA_VERSION:
+        expected["provider_parameter_schema"] = plan.provider_parameter_schema
+        expected["campaign_id"] = plan.campaign_id
+        expected["trial_id"] = plan.trial_id
+        expected["plan_sha256"] = plan.plan_sha256
+        expected["alias_maps_sha256"] = alias_maps_sha256(
+            dict(plan.symbol_aliases), dict(plan.name_aliases)
+        )
     for field, expected_value in expected.items():
         if manifest.get(field) != expected_value:
             raise ValueError(f"evidence manifest {field} is inconsistent")
@@ -227,6 +305,8 @@ def _validate_selection_file_set(
     exchange: ProviderExchange,
     *,
     status: str,
+    diagnostic: bytes | None,
+    schema_version: str,
 ) -> None:
     records = cast(dict[str, object], manifest["files"])
     expected = {
@@ -241,11 +321,58 @@ def _validate_selection_file_set(
         expected.add("model_response.txt")
     if status == "complete":
         expected.add("selection.json")
+    if diagnostic is not None:
+        expected.add("ranking_diagnostic.json")
     if set(records) != expected:
         raise ValueError("evidence bundle has an invalid file set")
     for relative in expected:
         if not inside(root, relative).is_file():
             raise ValueError(f"evidence file is missing: {relative}")
+    if (
+        diagnostic is not None
+        and (root / "ranking_diagnostic.json").read_bytes() != diagnostic
+    ):
+        raise ValueError("ranking diagnostic does not match the model response")
+    if (
+        schema_version == LEGACY_EVIDENCE_SCHEMA_VERSION
+        and "ranking_diagnostic.json" in records
+    ):
+        raise ValueError("legacy evidence cannot contain a ranking diagnostic")
+
+
+def _validate_contract_manifest(
+    manifest: Mapping[str, object],
+    contracts: Mapping[str, str],
+    *,
+    status: str,
+) -> None:
+    expected_status = (
+        "complete" if contracts["publication_contract"] == "passed" else "rejected"
+    )
+    if status != expected_status:
+        raise ValueError("evidence status does not match publication validation")
+    for field, expected in contracts.items():
+        if manifest.get(field) != expected:
+            raise ValueError(f"evidence manifest {field} is inconsistent")
+    expected_path = (
+        "ranking_diagnostic.json"
+        if contracts["ranking_contract"] == "passed"
+        and contracts["publication_contract"] == "failed"
+        else None
+    )
+    if manifest.get("ranking_diagnostic_path") != expected_path:
+        raise ValueError("evidence ranking_diagnostic_path is inconsistent")
+
+
+def _validate_legacy_contract_absence(manifest: Mapping[str, object]) -> None:
+    fields = {
+        "transport_contract",
+        "ranking_contract",
+        "publication_contract",
+        "ranking_diagnostic_path",
+    }
+    if any(field in manifest for field in fields):
+        raise ValueError("legacy evidence cannot contain layered contracts")
 
 
 def numeric_ranking_bytes(plan: SelectionPlan) -> bytes:
@@ -317,11 +444,26 @@ def _hot_sector_relevance(features: Mapping[str, object]) -> float:
     return float(value)
 
 
-def provider_parameters(provider: str) -> dict[str, object]:
+def provider_parameters(
+    plan: SelectionPlan,
+    *,
+    evidence_schema_version: str = EVIDENCE_SCHEMA_VERSION,
+) -> dict[str, object]:
     """Return the provider parameters committed by the evidence contract."""
 
-    if provider == "deepseek":
+    if plan.provider == "deepseek" and (
+        evidence_schema_version == LEGACY_EVIDENCE_SCHEMA_VERSION
+        or plan.provider_parameter_schema == "legacy_v1"
+    ):
         return {"temperature": 0.2, "response_format": {"type": "json_object"}}
+    if plan.provider == "deepseek":
+        if plan.thinking is None or plan.max_tokens is None:
+            raise ValueError("DeepSeek plan is missing inference parameters")
+        return deepseek_provider_parameters(
+            thinking=plan.thinking,
+            reasoning_effort=plan.reasoning_effort,
+            max_tokens=plan.max_tokens,
+        )
     return {"temperature": 0.2, "response_mime_type": "application/json"}
 
 
@@ -330,6 +472,7 @@ def validate_exchange(
     exchange: ProviderExchange,
     *,
     require_response_text: bool,
+    evidence_schema_version: str = EVIDENCE_SCHEMA_VERSION,
 ) -> None:
     """Require an exchange to agree with the plan and its raw response bytes."""
 
@@ -355,8 +498,11 @@ def validate_exchange(
     if not isinstance(request, dict):
         raise ValueError("provider exchange request body must be an object")
     typed_request = cast(dict[str, object], request)
-    _validate_request_prompt(plan, typed_request)
-    _validate_request_parameters(plan, typed_request)
+    validate_provider_request(
+        plan,
+        typed_request,
+        provider_parameters(plan, evidence_schema_version=evidence_schema_version),
+    )
     response_text, actual_model, extraction_error = _extract_provider_response(
         plan.provider, exchange.response_body
     )
@@ -385,55 +531,50 @@ def _provider_endpoint(provider: str, model: str) -> str:
     )
 
 
-def _validate_request_parameters(
-    plan: SelectionPlan, request: Mapping[str, object]
-) -> None:
-    if plan.provider == "deepseek":
-        expected = {
-            "model": plan.model,
-            "temperature": 0.2,
-            "response_format": {"type": "json_object"},
-        }
-        actual = {field: request.get(field) for field in expected}
-    else:
-        expected = {
-            "generationConfig": {
-                "temperature": 0.2,
-                "responseMimeType": "application/json",
-            }
-        }
-        actual = {"generationConfig": request.get("generationConfig")}
-    if actual != expected:
-        raise ValueError("provider request parameters do not match the selection plan")
+def _archived_inference_parameters(
+    manifest: Mapping[str, object], market: str
+) -> tuple[ProviderParameterSchema, DeepSeekInferenceKwargs | None]:
+    schema_version = _manifest_string(manifest, "schema_version")
+    if market != "CN":
+        return "explicit_v2", None
+    if schema_version == LEGACY_EVIDENCE_SCHEMA_VERSION:
+        return "legacy_v1", None
+    profile = _manifest_string(manifest, "provider_parameter_schema")
+    if profile == "legacy_v1":
+        return "legacy_v1", None
+    if profile != "explicit_v2":
+        raise ValueError("evidence provider_parameter_schema is invalid")
+    return "explicit_v2", deepseek_inference_kwargs(manifest.get("provider_parameters"))
 
 
-def _validate_request_prompt(
-    plan: SelectionPlan, request: Mapping[str, object]
-) -> None:
-    if plan.provider == "deepseek":
-        messages = request.get("messages")
-        if not isinstance(messages, list):
-            raise ValueError("provider request does not contain the exact prompt")
-        user_prompts = [
-            message.get("content")
-            for message in messages
-            if isinstance(message, dict) and message.get("role") == "user"
-        ]
-    else:
-        contents = request.get("contents")
-        if not isinstance(contents, list):
-            raise ValueError("provider request does not contain the exact prompt")
-        user_prompts = []
-        for content in contents:
-            if not isinstance(content, dict) or content.get("role") != "user":
-                continue
-            parts = content.get("parts")
-            if isinstance(parts, list):
-                user_prompts.extend(
-                    part.get("text") for part in parts if isinstance(part, dict)
-                )
-    if user_prompts != [plan.prompt]:
-        raise ValueError("provider request does not contain the exact prompt")
+def deepseek_inference_kwargs(raw: object) -> DeepSeekInferenceKwargs:
+    """Parse strict v2 DeepSeek parameters into selection-plan arguments."""
+
+    if not isinstance(raw, dict):
+        raise ValueError("evidence provider_parameters must be an object")
+    parameters = cast(dict[str, object], raw)
+    thinking_object = parameters.get("thinking")
+    if not isinstance(thinking_object, dict):
+        raise ValueError("evidence thinking parameter is invalid")
+    thinking = cast(dict[str, object], thinking_object).get("type")
+    if thinking not in {"enabled", "disabled"}:
+        raise ValueError("evidence thinking parameter is invalid")
+    effort = parameters.get("reasoning_effort")
+    if effort is not None and effort not in {"high", "max"}:
+        raise ValueError("evidence reasoning_effort is invalid")
+    kwargs: DeepSeekInferenceKwargs = {
+        "thinking": cast(ThinkingMode, thinking),
+        "reasoning_effort": cast(ReasoningEffort | None, effort),
+        "max_tokens": _strict_int(parameters.get("max_tokens"), "max_tokens"),
+    }
+    expected = deepseek_provider_parameters(
+        thinking=kwargs["thinking"],
+        reasoning_effort=kwargs["reasoning_effort"],
+        max_tokens=kwargs["max_tokens"],
+    )
+    if parameters != expected:
+        raise ValueError("evidence provider_parameters are inconsistent")
+    return kwargs
 
 
 def _extract_provider_response(
@@ -528,12 +669,7 @@ def validated_bundle(
 def inside(root: Path, relative: str) -> Path:
     """Resolve one bundle-relative path without allowing traversal."""
 
-    if not relative or Path(relative).is_absolute():
-        raise ValueError("evidence paths must be non-empty and relative")
-    candidate = (root / relative).resolve()
-    if not candidate.is_relative_to(root.resolve()):
-        raise ValueError("evidence path escapes its campaign directory")
-    return candidate
+    return safe_bundle_path(root, relative, label="evidence")
 
 
 def read_object(path: Path) -> dict[str, object]:
@@ -571,6 +707,20 @@ def _optional_manifest_string(manifest: Mapping[str, object], field: str) -> str
     if value is None:
         return None
     return _required_string(value, f"evidence {field}")
+
+
+def _nullable_manifest_string(manifest: Mapping[str, object], field: str) -> str | None:
+    value = manifest.get(field)
+    if value is None:
+        return None
+    return _required_string(value, f"evidence {field}")
+
+
+def _manifest_bool(manifest: Mapping[str, object], field: str) -> bool:
+    value = manifest.get(field)
+    if not isinstance(value, bool):
+        raise ValueError(f"evidence {field} must be a boolean")
+    return value
 
 
 def _manifest_string_list(manifest: Mapping[str, object], field: str) -> list[str]:
@@ -627,7 +777,9 @@ def _json_bytes(value: object) -> bytes:
 
 __all__ = [
     "EVIDENCE_SCHEMA_VERSION",
+    "DeepSeekInferenceKwargs",
     "candidate_available_at",
+    "deepseek_inference_kwargs",
     "digest",
     "inside",
     "numeric_ranking_bytes",
@@ -636,6 +788,7 @@ __all__ = [
     "validate_complete_artifact",
     "validate_exchange",
     "validate_rejection",
+    "selection_contracts",
     "validate_selection_evidence",
     "validated_bundle",
 ]
