@@ -122,16 +122,14 @@ def test_prompts_bind_market_specific_output_language(
     us_prompt = json.loads(us.prompt)
     assert cn_prompt["response_language"] == "Simplified Chinese"
     assert any("CJK ideograph" in item for item in cn_prompt["constraints"])
+    assert "response_example" not in cn_prompt
     assert (
-        cn_prompt["response_example"]["picks"][0]["reasoning"]
-        == "综合候选评分支持该候选的相对排序。"
+        cn_prompt["response_schema"]["picks"][0]["symbol"]
+        == "one exact symbol supplied in candidates"
     )
     assert us_prompt["response_language"] == "English"
     assert "Write reasoning and risk_note in English." in us_prompt["constraints"]
-    assert (
-        us_prompt["response_example"]["picks"][0]["reasoning"]
-        == "The overall candidate score supports this relative candidate ranking."
-    )
+    assert "response_example" not in us_prompt
 
 
 def test_style_changes_prompt_materially(us_manifest: Path) -> None:
@@ -212,7 +210,7 @@ def test_selection_enriches_only_from_candidates(cn_manifest: Path) -> None:
     assert artifact.upstream_execution_not_before == "next_trading_session"
     assert artifact.generated_at == created
     assert artifact.provider == "deepseek"
-    assert artifact.prompt_version == PROMPT_VERSION == "2026-07-15.3"
+    assert artifact.prompt_version == PROMPT_VERSION == "2026-07-16.4"
     assert artifact.input_count == 3
     assert artifact.requested_top_n == 2
     assert [pick.symbol for pick in artifact.picks] == ["000001.SZ", "600000.SH"]
@@ -241,7 +239,7 @@ def test_artifact_strictly_loads_previous_prompt_version(cn_manifest: Path) -> N
     loaded = SelectionArtifact.model_validate(legacy_payload, strict=True)
 
     assert loaded.prompt_version == "2026-07-15.2"
-    assert current.prompt_version == PROMPT_VERSION == "2026-07-15.3"
+    assert current.prompt_version == PROMPT_VERSION == "2026-07-16.4"
     with pytest.raises(ValueError, match="current prompt version"):
         write_selection(loaded, cn_manifest.parent / "legacy-selection.json")
     assert not (cn_manifest.parent / "legacy-selection.json").exists()

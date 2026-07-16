@@ -7,6 +7,7 @@
 - [输入格式](input-formats.md)
 - [输出格式](output-artifact.md)
 - [时间与证据边界](trust-boundaries.md)
+- [证据归档与稳定性试验](evidence-and-stability.md)
 
 ## 维护文档
 

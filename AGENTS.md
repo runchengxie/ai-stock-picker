@@ -4,11 +4,15 @@
 
 本仓库提供严格、可审计的候选股重排工具。
 
-当前公开命令只有：
+当前公开命令包括：
 
 ```text
 aipick cn pick
 aipick us pick
+aipick cn validate
+aipick cn validate-evidence
+aipick cn stability-plan
+aipick cn trial
 ```
 
 候选池由外部系统生成。本仓库负责校验输入、构建 prompt、调用对应模型、校验模型输出并发布结果文件。
@@ -34,6 +38,17 @@ aipick us pick
 14. prompt 中的 `risk_score` 只能投影为 `intraday_stability_score`，语义为值越高越稳定。
 15. 显式凭据文件必须以安全文件描述符读取，要求当前用户、普通文件、`0600`、不超过
     128 KiB，读取前后元数据一致，且只能返回当前 provider 的专属 key。
+16. 正式调用必须写入 append-only 证据目录，保存精确 prompt、脱敏 HTTP 信息和原始
+    响应。已有目录、缺失清单或哈希不一致都必须失败。
+17. 稳定性试验固定生成 `canonical`、`shuffle_101`、`shuffle_202`、
+    `shuffle_303` 和 `opaque_404` 五个实验臂。三个 shuffle 必须真正改变最终 Prompt
+    顺序。
+18. 匿名臂同时替换股票代码和名称，保留标准顺序和全部数值字段，并保存基于
+    `SHA256(campaign_id, date, symbol, 404)` 排序得到的可逆映射。
+19. production v4 和 legacy v3 使用独立 Prompt 配置。正式写入器只接受 v4，稳定性
+    `trial` 只使用冻结的 v3。
+20. HTTP 成功但响应正文无法提取时，必须保存脱敏后的拒绝证据和原始响应字节，不得生成
+    结果文件。证据清单同时记录请求模型别名和响应实际模型标识。
 
 ## 主要目录
 
@@ -46,7 +61,10 @@ src/stock_analysis/
     ├── commentary_validation.py
     ├── contracts.py
     ├── credentials.py
+    ├── evidence.py
+    ├── prompting.py
     ├── providers.py
+    ├── stability_support.py
     └── selection.py
 
 tests/
@@ -62,8 +80,11 @@ docs/
 - `commentary_validation.py` 对逐句 grounding、候选值和客户文案安全边界 fail closed
 - `contracts.py` 定义模型输出和结果文件
 - `credentials.py` 安全读取显式 provider 凭据文件
-- `providers.py` 调用 DeepSeek 与 Gemini
-- `selection.py` 构建 prompt、校验结果并写入文件
+- `evidence.py` 写入和校验证据目录，并生成无网络稳定性试验计划
+- `prompting.py` 隔离 production v4 与 legacy v3 的 Prompt 渲染
+- `providers.py` 调用 DeepSeek 与 Gemini，并保留可审计的响应信息
+- `stability_support.py` 生成和校验匿名身份映射
+- `selection.py` 构建选择计划、校验结果并按用途写入文件
 - `app/cli.py` 处理命令行参数和错误输出
 
 ## 开发命令
@@ -112,7 +133,8 @@ uv run python scripts/dev/check.py
 - 输入契约
 - 时间与证据限制
 
-改变 prompt 语义时更新 `PROMPT_VERSION`。
+改变 production Prompt 语义时更新 `PROMPT_VERSION`。冻结的 legacy v3 只能用于预注册
+稳定性试验，其字节级 golden test 必须持续通过。
 
 改变持久化 schema 时更新 schema 版本，并说明兼容性影响。
 

@@ -12,6 +12,7 @@ import pytest
 from stock_analysis.ai_lab.providers import (
     ProviderError,
     call_deepseek,
+    call_deepseek_exchange,
     call_gemini,
 )
 
@@ -90,6 +91,41 @@ def test_deepseek_uses_fixed_https_endpoint_and_parses_response(
     assert unredirected["Authorization"] == "Bearer deepseek-secret"
     assert timeout == 7.0
     assert payload["model"] == "deepseek-chat"
+
+
+def test_deepseek_exchange_records_actual_model_and_preserves_invalid_raw_body(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "owner-secret")
+    complete_body = json.dumps(
+        {
+            "model": "deepseek-v3.1",
+            "choices": [{"message": {"content": '{"picks":[]}'}}],
+        }
+    ).encode()
+
+    complete = call_deepseek_exchange(
+        "prompt",
+        transport=lambda _request, _timeout: complete_body,
+    )
+    assert complete.model == "deepseek-chat"
+    assert complete.actual_model == "deepseek-v3.1"
+    assert complete.extraction_error is None
+
+    rejected = call_deepseek_exchange(
+        "prompt",
+        transport=lambda _request, _timeout: b"http-success-but-not-json",
+    )
+    assert rejected.response_body == b"http-success-but-not-json"
+    assert rejected.response_text is None
+    assert rejected.actual_model is None
+    assert rejected.extraction_error == "provider_response_invalid_json"
+    assert b"owner-secret" not in rejected.request_body
+    assert all(
+        value == "<redacted>"
+        for name, value in rejected.request_headers
+        if name != "Content-Type"
+    )
 
 
 def test_gemini_uses_fixed_https_endpoint_and_parses_response(
@@ -191,6 +227,52 @@ def test_transport_error_is_sanitized(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(ProviderError, match="request failed") as error:
         call_deepseek("prompt", transport=transport)
     assert "secret internal detail" not in str(error.value)
+
+
+@pytest.mark.parametrize("status", [429, 500, 503])
+def test_retryable_http_status_has_machine_readable_marker(
+    status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        raise urllib.error.HTTPError(
+            request.full_url,
+            status,
+            "sensitive provider detail",
+            HTTPMessage(),
+            None,
+        )
+
+    with pytest.raises(
+        ProviderError,
+        match=rf"provider request failed: retryable:http_{status}",
+    ) as error:
+        call_deepseek("prompt", transport=transport)
+    assert "sensitive provider detail" not in str(error.value)
+
+
+@pytest.mark.parametrize("status", [400, 401, 402, 403])
+def test_nonretryable_http_status_has_machine_readable_marker(
+    status: int, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "secret")
+
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        raise urllib.error.HTTPError(
+            request.full_url,
+            status,
+            "sensitive provider detail",
+            HTTPMessage(),
+            None,
+        )
+
+    with pytest.raises(
+        ProviderError,
+        match=rf"provider request failed: nonretryable:http_{status}",
+    ) as error:
+        call_deepseek("prompt", transport=transport)
+    assert "sensitive provider detail" not in str(error.value)
 
 
 @pytest.mark.parametrize("timeout", [0.0, -1.0, float("nan"), float("inf")])

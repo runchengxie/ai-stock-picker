@@ -2,14 +2,57 @@ from __future__ import annotations
 
 import json
 import sys
+from dataclasses import replace
 from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 import pytest
 
-from stock_analysis.ai_lab.selection import build_selection_plan, create_selection
+from stock_analysis.ai_lab.providers import ProviderExchange
+from stock_analysis.ai_lab.selection import (
+    SelectionPlan,
+    build_selection_plan,
+    create_selection,
+)
 from stock_analysis.app.cli import app, create_parser, main
+
+
+def _exchange(
+    prompt: str, response: str, *, timeout: float = 120.0
+) -> ProviderExchange:
+    request = json.dumps(
+        {
+            "model": "deepseek-chat",
+            "messages": [{"role": "user", "content": prompt}],
+            "temperature": 0.2,
+            "response_format": {"type": "json_object"},
+        },
+        ensure_ascii=False,
+    ).encode()
+    raw_response = json.dumps(
+        {
+            "model": "deepseek-chat-20260715",
+            "choices": [{"message": {"content": response}}],
+        },
+        ensure_ascii=False,
+    ).encode()
+    return ProviderExchange(
+        provider="deepseek",
+        model="deepseek-chat",
+        endpoint="https://api.deepseek.com/v1/chat/completions",
+        request_method="POST",
+        request_headers=(
+            ("Content-Type", "application/json"),
+            ("Authorization", "<redacted>"),
+        ),
+        request_body=request,
+        response_body=raw_response,
+        response_text=response,
+        actual_model="deepseek-chat-20260715",
+        extraction_error=None,
+        timeout_seconds=timeout,
+    )
 
 
 def _write_v2_selection(candidates: Path, destination: Path) -> dict[str, Any]:
@@ -76,7 +119,7 @@ def test_root_help_lists_only_two_markets(
     assert "pipeline" not in output
 
 
-def test_market_parsers_expose_only_pick_and_validation() -> None:
+def test_market_parsers_expose_documented_commands() -> None:
     parser = create_parser()
     for market in ("us", "cn"):
         with pytest.raises(SystemExit) as exit_info:
@@ -151,8 +194,8 @@ def test_live_path_writes_validated_artifact(
         }
     )
     monkeypatch.setattr(
-        "stock_analysis.ai_lab.selection.call_deepseek",
-        lambda prompt, *, model, timeout: response,
+        "stock_analysis.app.cli.call_plan_provider_exchange",
+        lambda plan, **_kwargs: _exchange(plan.prompt, response),
     )
     output = tmp_path / "selection.json"
     code = main(
@@ -177,6 +220,10 @@ def test_live_path_writes_validated_artifact(
     assert payload["strict_point_in_time"] is False
     assert payload["eligible_as_oos_evidence"] is False
     assert "validated picks" in capsys.readouterr().out
+    evidence = Path(f"{output}.evidence")
+    assert (evidence / "manifest.json").is_file()
+    assert (evidence / "prompt.txt").is_file()
+    assert (evidence / "provider_response_body.bin").is_file()
 
     assert (
         main(
@@ -187,6 +234,8 @@ def test_live_path_writes_validated_artifact(
                 str(output),
                 "--candidates",
                 str(cn_manifest),
+                "--evidence-dir",
+                str(evidence),
             ]
         )
         == 0
@@ -197,12 +246,65 @@ def test_live_path_writes_validated_artifact(
         "market": "CN",
         "picks": 1,
         "prompt_hash_revalidated": True,
-        "prompt_version": "2026-07-15.3",
-        "response_sha256_verification": "format_only_raw_response_unavailable",
+        "prompt_version": "2026-07-16.4",
+        "response_sha256_verification": "byte_exact_evidence",
         "selection_as_of": "2026-07-15",
         "valid": True,
         "validation_profile": "current_full",
     }
+
+
+def test_http_success_with_invalid_provider_body_is_archived_and_rejected(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    raw_body = b"http-200-but-not-json"
+
+    def invalid_exchange(plan: SelectionPlan, **_kwargs: object) -> ProviderExchange:
+        return replace(
+            _exchange(plan.prompt, "unused"),
+            response_body=raw_body,
+            response_text=None,
+            actual_model=None,
+            extraction_error="provider_response_invalid_json",
+        )
+
+    monkeypatch.setattr(
+        "stock_analysis.app.cli.call_plan_provider_exchange", invalid_exchange
+    )
+    output = tmp_path / "selection.json"
+    evidence = tmp_path / "invalid-response-evidence"
+    code = main(
+        [
+            "cn",
+            "pick",
+            "--candidates",
+            str(cn_manifest),
+            "--output",
+            str(output),
+            "--evidence-dir",
+            str(evidence),
+            "--as-of",
+            "2026-07-15",
+            "--top-n",
+            "1",
+        ]
+    )
+
+    assert code == 2
+    assert not output.exists()
+    assert (evidence / "provider_response_body.bin").read_bytes() == raw_body
+    assert not (evidence / "model_response.txt").exists()
+    manifest = json.loads((evidence / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["status"] == "rejected"
+    assert manifest["rejection"] == "provider_response_invalid_json"
+    assert manifest["response_model"] is None
+    assert "invalid response schema" in capsys.readouterr().err
+    assert b"owner-secret" not in b"".join(
+        path.read_bytes() for path in evidence.rglob("*") if path.is_file()
+    )
 
 
 def test_validate_rejects_market_mismatch(
@@ -224,8 +326,8 @@ def test_validate_rejects_market_mismatch(
         }
     )
     monkeypatch.setattr(
-        "stock_analysis.ai_lab.selection.call_deepseek",
-        lambda prompt, *, model, timeout: response,
+        "stock_analysis.app.cli.call_plan_provider_exchange",
+        lambda plan, **_kwargs: _exchange(plan.prompt, response),
     )
     output = tmp_path / "cn-selection.json"
     assert (
@@ -282,8 +384,8 @@ def test_validate_rechecks_commentary_and_candidate_lineage(
         }
     )
     monkeypatch.setattr(
-        "stock_analysis.ai_lab.selection.call_deepseek",
-        lambda prompt, *, model, timeout: response,
+        "stock_analysis.app.cli.call_plan_provider_exchange",
+        lambda plan, **_kwargs: _exchange(plan.prompt, response),
     )
     output = tmp_path / "selection.json"
     assert (
@@ -426,6 +528,83 @@ def test_live_path_requires_output(
     assert "--output is required" in capsys.readouterr().err
 
 
+def test_stability_plan_is_network_free_and_trial_uses_frozen_prompt(
+    cn_manifest: Path,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_call(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("stability planning must not call a provider")
+
+    monkeypatch.setattr(
+        "stock_analysis.app.cli.call_plan_provider_exchange", unexpected_call
+    )
+    campaign = tmp_path / "campaign"
+    assert (
+        main(
+            [
+                "cn",
+                "stability-plan",
+                "--candidates",
+                str(cn_manifest),
+                "--as-of",
+                "2026-07-15",
+                "--top-n",
+                "1",
+                "--style",
+                "momentum",
+                "--campaign-id",
+                "deepseek-stability-v2",
+                "--output-dir",
+                str(campaign),
+            ]
+        )
+        == 0
+    )
+    assert "api_calls=0" in capsys.readouterr().out
+
+    trial = campaign / "trials/canonical/trial.json"
+    frozen_prompt = (trial.parent / "prompt.txt").read_text(encoding="utf-8")
+    first_symbol = json.loads(frozen_prompt)["candidates"][0]["symbol"]
+    response = _response_for_prompt(first_symbol)
+    monkeypatch.setattr(
+        "stock_analysis.app.cli.call_plan_provider_exchange",
+        lambda plan, **_kwargs: _exchange(plan.prompt, response),
+    )
+    output = tmp_path / "trial-selection.json"
+    assert (
+        main(
+            [
+                "cn",
+                "trial",
+                "--plan",
+                str(trial),
+                "--output",
+                str(output),
+            ]
+        )
+        == 0
+    )
+    assert output.is_file()
+
+
+def _response_for_prompt(symbol: str) -> str:
+    return json.dumps(
+        {
+            "picks": [
+                {
+                    "symbol": symbol,
+                    "confidence_score": 8,
+                    "reasoning": "综合候选评分支持该候选排序。",
+                    "risk_note": "综合候选评分仍有信息边界。",
+                }
+            ]
+        },
+        ensure_ascii=False,
+    )
+
+
 def test_live_path_refuses_existing_output_before_provider_call(
     cn_manifest: Path,
     tmp_path: Path,
@@ -511,12 +690,14 @@ def test_live_path_uses_market_specific_key_from_credential_file(
         model: str,
         timeout: float,
         api_key: str | None = None,
-    ) -> str:
-        del prompt, model, timeout
+    ) -> ProviderExchange:
+        del model
         observed.append(api_key)
-        return response
+        return _exchange(prompt, response, timeout=timeout)
 
-    monkeypatch.setattr("stock_analysis.ai_lab.selection.call_deepseek", fake_deepseek)
+    monkeypatch.setattr(
+        "stock_analysis.ai_lab.selection.call_deepseek_exchange", fake_deepseek
+    )
     output = tmp_path / "selection.json"
 
     code = main(

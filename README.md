@@ -73,7 +73,7 @@ uv run aipick us pick \
 ```
 
 跨仓调用可以改传 `--credential-file /absolute/path/api_keys.json`。文件必须由当前用户
-拥有、权限精确为 `0600`、不超过 128 KiB。推荐 JSON 格式如下；旧的 UTF-8
+拥有、权限精确为 `0600`、不超过 128 KiB。推荐 JSON 格式如下。旧的 UTF-8
 `KEY=value` 行格式继续兼容。
 
 ```json
@@ -85,12 +85,18 @@ uv run aipick us pick \
 }
 ```
 
-解析器不调用 shell 或展开变量，只读取当前 provider 的专属 key；JSON 重复字段、错误
+解析器不调用 shell 或展开变量，只读取当前 provider 的专属 key。JSON 重复字段、错误
 类型和空 key 都会失败。未传 `--credential-file` 时才读取进程环境变量。
 
-结果文件不会覆盖已有文件。重复运行时，请复用已有结果或指定新的输出路径。
+正式运行会同时生成结果文件和 append-only 证据目录。未传 `--evidence-dir` 时，证据目录为
+`<output>.evidence`。两者都拒绝覆盖已有内容。
 
-`reasoning` 和 `risk_note` 是仅基于候选字段的 AI interpretation，未经独立事实核验，
+证据目录保存候选池原文件、完整数值排名、精确 prompt、脱敏后的 HTTP 请求信息、请求
+正文、模型服务原始响应、请求模型别名、响应实际模型、模型正文、选择结果和逐文件哈希。
+凭据不会写入证据目录。HTTP 调用成功但响应格式无效时，原始响应会保存为拒绝证据，结果
+文件不会生成。
+
+`reasoning` 和 `risk_note` 是仅基于候选字段的 AI 解读，未经独立事实核验，
 不应包装成已核验事实或投资建议。每个句子可以使用获批的中英文自然标签引用候选字段，
 无需向客户暴露 snake_case 字段名。
 
@@ -99,6 +105,7 @@ uv run aipick us pick \
 - [文档导航](docs/README.md)
 - [输入格式](docs/input-formats.md)
 - [输出格式](docs/output-artifact.md)
+- [证据归档与稳定性试验](docs/evidence-and-stability.md)
 - [时间与证据边界](docs/trust-boundaries.md)
 - [项目架构](docs/architecture.md)
 - [开发与检查](docs/development.md)
