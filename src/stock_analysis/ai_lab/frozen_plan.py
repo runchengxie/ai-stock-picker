@@ -13,7 +13,7 @@ from typing import cast
 
 from .alias_contracts import alias_map_bytes, alias_maps_sha256
 from .bundle_paths import reject_symlink_path, safe_bundle_path
-from .contracts import Market, Style
+from .contracts import Market, Style, validate_prompt_profile
 from .evidence_consistency import (
     deepseek_inference_kwargs,
     numeric_ranking_bytes,
@@ -151,7 +151,7 @@ def load_pick_plan(plan_path: str | Path) -> SelectionPlan:
         presentation_order=_string_list(payload, "presentation_order"),
         symbol_aliases=symbol_aliases,
         name_aliases=name_aliases,
-        prompt_profile=_string(payload, "prompt_profile"),
+        prompt_profile=validate_prompt_profile(_string(payload, "prompt_profile")),
         source_candidate_path=_string(payload, "source_candidate_path"),
         campaign_id=_optional_string(payload, "campaign_id"),
         trial_id=_optional_string(payload, "trial_id"),

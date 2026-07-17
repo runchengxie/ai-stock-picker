@@ -480,7 +480,7 @@ def test_stability_campaign_matches_frozen_five_arm_design_and_rebuilds_bytes(
     assert manifest["shuffle_seeds"] == [101, 202, 303]
     assert manifest["opaque_seed"] == 404
     assert manifest["prompt_version"] == LEGACY_STABILITY_PROMPT_VERSION
-    assert PROMPT_VERSION == "2026-07-17.5"
+    assert PROMPT_VERSION == "2026-07-17.6"
     assert "response_example" not in json.loads(base.prompt)
     assert "response_schema" in json.loads(base.prompt)
     assert _tree_bytes(output) == _tree_bytes(rebuilt)

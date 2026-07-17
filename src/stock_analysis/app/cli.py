@@ -163,7 +163,9 @@ def _add_pick_plan_parser(
     parser.add_argument("--style", choices=styles)
     parser.add_argument("--model")
     parser.add_argument(
-        "--prompt-profile", choices=("production_v4", "ranking_only_v1"), default="production_v4"
+        "--prompt-profile",
+        choices=("production_v4", "ranking_only_v1"),
+        default="production_v4",
     )
     parser.add_argument("--presentation-order-file")
     parser.add_argument("--symbol-aliases-file")

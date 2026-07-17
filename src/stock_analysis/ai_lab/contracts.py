@@ -12,10 +12,12 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 SCHEMA_VERSION = "1.0.0"
 PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
 RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
+LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
 Style = Literal["momentum", "quality", "growth"]
+PromptProfile = Literal["production_v4", "legacy_stability_v3", "ranking_only_v1"]
 InputContract = Literal[
     "hot_sector_candidate_universe_v1",
     "generic_json_manifest",
@@ -32,9 +34,29 @@ ReadablePromptVersion = Literal[
     "2026-07-17.6",
 ]
 
+_PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
+    "production_v4": PROMPT_VERSION,
+    "legacy_stability_v3": LEGACY_STABILITY_PROMPT_VERSION,
+    "ranking_only_v1": RANKING_ONLY_PROMPT_VERSION,
+}
+
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
 _US_SYMBOL = re.compile(r"^[A-Z][A-Z0-9]*(?:[.-][A-Z0-9]+)?$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
+
+
+def validate_prompt_profile(value: str) -> PromptProfile:
+    """Return a supported prompt profile with its narrow static type."""
+
+    if value not in _PROMPT_VERSIONS:
+        raise ValueError("unsupported prompt profile")
+    return value
+
+
+def prompt_version_for_profile(value: str) -> ReadablePromptVersion:
+    """Resolve the artifact version owned by one prompt profile."""
+
+    return _PROMPT_VERSIONS[validate_prompt_profile(value)]
 
 
 def validate_symbol(symbol: str, market: Market) -> str:
@@ -282,6 +304,7 @@ class SelectionArtifact(BaseModel):
 
 __all__ = [
     "InputContract",
+    "LEGACY_STABILITY_PROMPT_VERSION",
     "Lineage",
     "Market",
     "ModelPick",
@@ -289,6 +312,7 @@ __all__ = [
     "PROMPT_VERSION",
     "RANKING_ONLY_PROMPT_VERSION",
     "PointInTimeAssurance",
+    "PromptProfile",
     "Provider",
     "ReadablePromptVersion",
     "SCHEMA_VERSION",
@@ -296,5 +320,7 @@ __all__ = [
     "StockPick",
     "Style",
     "TemporalStatus",
+    "prompt_version_for_profile",
+    "validate_prompt_profile",
     "validate_symbol",
 ]
