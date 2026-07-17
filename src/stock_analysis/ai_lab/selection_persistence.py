@@ -12,7 +12,10 @@ from .contracts import (
     RANKING_ONLY_PROMPT_VERSION,
     SelectionArtifact,
 )
-from .ranking_policy_contract import BOUNDED_RANKING_PROMPT_VERSION
+from .ranking_policy_contract import (
+    BOUNDED_RANKING_PROMPT_VERSION,
+    BOUNDED_RANKING_V2_PROMPT_VERSION,
+)
 
 
 def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Path:
@@ -22,6 +25,7 @@ def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Pat
         PROMPT_VERSION,
         RANKING_ONLY_PROMPT_VERSION,
         BOUNDED_RANKING_PROMPT_VERSION,
+        BOUNDED_RANKING_V2_PROMPT_VERSION,
     }
     if artifact.prompt_version not in current_versions:
         raise ValueError(

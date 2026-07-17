@@ -10,6 +10,8 @@ from .candidates import Candidate, CandidateUniverse
 from .ranking_policy_contract import (
     BOUNDED_RANKING_POLICY,
     BOUNDED_RANKING_PROFILE,
+    BOUNDED_RANKING_V2_POLICY,
+    BOUNDED_RANKING_V2_PROFILE,
     BoundedRankingPolicy,
 )
 
@@ -17,7 +19,11 @@ from .ranking_policy_contract import (
 def policy_for_profile(profile: str) -> BoundedRankingPolicy | None:
     """Resolve the opt-in policy; every existing profile remains unbounded."""
 
-    return BOUNDED_RANKING_POLICY if profile == BOUNDED_RANKING_PROFILE else None
+    if profile == BOUNDED_RANKING_PROFILE:
+        return BOUNDED_RANKING_POLICY
+    if profile == BOUNDED_RANKING_V2_PROFILE:
+        return BOUNDED_RANKING_V2_POLICY
+    return None
 
 
 def numeric_ranking_method(universe: CandidateUniverse) -> str:
@@ -66,15 +72,14 @@ def validate_policy_plan(
     """Reject any plan that cannot implement the immutable bounded policy."""
 
     if market != "CN":
-        raise ValueError("bounded_ranking_v1 is restricted to the CN research path")
+        raise ValueError("bounded ranking is restricted to the CN research path")
     if top_n != policy.required_output_count:
         raise ValueError(
-            f"bounded_ranking_v1 requires top_n={policy.required_output_count}"
+            f"bounded ranking requires top_n={policy.required_output_count}"
         )
     if len(universe.candidates) < policy.boundary_end_rank:
         raise ValueError(
-            "bounded_ranking_v1 requires at least "
-            f"{policy.boundary_end_rank} candidates"
+            f"bounded ranking requires at least {policy.boundary_end_rank} candidates"
         )
 
 
@@ -145,14 +150,34 @@ def policy_evidence_record(
 def boundary_score_level(policy: BoundedRankingPolicy, numeric_rank: int) -> str:
     """Coarsen a boundary rank into a stable three-level representation."""
 
-    relative = numeric_rank - policy.boundary_start_rank
-    if relative < 0 or numeric_rank > policy.boundary_end_rank:
-        raise ValueError("numeric rank is outside the bounded policy")
+    if policy.score_representation != "stable_boundary_level_v1":
+        raise ValueError("boundary score levels are unavailable for this policy")
+    relative = _boundary_offset(policy, numeric_rank)
     if relative < 3:
         return "upper"
     if relative < 6:
         return "middle"
     return "lower"
+
+
+def boundary_prompt_metadata(
+    policy: BoundedRankingPolicy, numeric_rank: int
+) -> dict[str, str]:
+    """Return only the versioned per-candidate metadata allowed in the prompt."""
+
+    _boundary_offset(policy, numeric_rank)
+    if policy.score_representation == "stable_boundary_level_v1":
+        return {"numeric_score_level": boundary_score_level(policy, numeric_rank)}
+    if policy.score_representation == "uniform_anonymous_boundary_band_v1":
+        return {"boundary_band": "eligible"}
+    raise ValueError("unsupported bounded ranking score representation")
+
+
+def _boundary_offset(policy: BoundedRankingPolicy, numeric_rank: int) -> int:
+    relative = numeric_rank - policy.boundary_start_rank
+    if relative < 0 or numeric_rank > policy.boundary_end_rank:
+        raise ValueError("numeric rank is outside the bounded policy")
+    return relative
 
 
 def hot_sector_relevance(candidate: Candidate) -> float:
@@ -168,6 +193,7 @@ def hot_sector_relevance(candidate: Candidate) -> float:
 
 __all__ = [
     "blinded_presentation_order",
+    "boundary_prompt_metadata",
     "boundary_score_level",
     "hot_sector_relevance",
     "numeric_ranked_candidates",

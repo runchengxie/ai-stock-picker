@@ -7,6 +7,8 @@ from typing import Literal
 
 BOUNDED_RANKING_PROMPT_VERSION: Literal["2026-07-17.2"] = "2026-07-17.2"
 BOUNDED_RANKING_PROFILE: Literal["bounded_ranking_v1"] = "bounded_ranking_v1"
+BOUNDED_RANKING_V2_PROMPT_VERSION: Literal["2026-07-17.7"] = "2026-07-17.7"
+BOUNDED_RANKING_V2_PROFILE: Literal["bounded_ranking_v2"] = "bounded_ranking_v2"
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,10 +58,27 @@ BOUNDED_RANKING_POLICY = BoundedRankingPolicy(
     selection_limitation="bounded_ranking_policy_v1_research_only",
 )
 
+BOUNDED_RANKING_V2_POLICY = BoundedRankingPolicy(
+    schema_version="1.0.0",
+    policy_id="numeric_top7_boundary8_15_select3_uniform_band_v2",
+    locked_prefix_count=7,
+    boundary_start_rank=8,
+    boundary_end_rank=15,
+    boundary_selection_count=3,
+    required_output_count=10,
+    score_representation="uniform_anonymous_boundary_band_v1",
+    hidden_exact_fields=("numeric_rank", "score", "relevance"),
+    presentation_order_method="sha256_input_policy_symbol_v1",
+    selection_limitation="bounded_ranking_policy_v2_research_only",
+)
+
 
 __all__ = [
     "BOUNDED_RANKING_POLICY",
     "BOUNDED_RANKING_PROFILE",
     "BOUNDED_RANKING_PROMPT_VERSION",
+    "BOUNDED_RANKING_V2_POLICY",
+    "BOUNDED_RANKING_V2_PROFILE",
+    "BOUNDED_RANKING_V2_PROMPT_VERSION",
     "BoundedRankingPolicy",
 ]

@@ -40,6 +40,14 @@ from stock_analysis.ai_lab.selection import (
     write_stability_selection,
 )
 
+_CN_PROMPT_PROFILES = (
+    "production_v4",
+    "ranking_only_v1",
+    "bounded_ranking_v1",
+    "bounded_ranking_v2",
+)
+_US_PROMPT_PROFILES = ("production_v4", "ranking_only_v1")
+
 
 def create_parser() -> argparse.ArgumentParser:
     """Create the complete CLI parser."""
@@ -63,11 +71,7 @@ def _add_market_parser(
     markets: argparse._SubParsersAction[argparse.ArgumentParser], market: str
 ) -> None:
     label = "US / Gemini" if market == "us" else "A-share / DeepSeek"
-    prompt_profiles = (
-        ("production_v4", "ranking_only_v1", "bounded_ranking_v1")
-        if market == "cn"
-        else ("production_v4", "ranking_only_v1")
-    )
+    prompt_profiles = _CN_PROMPT_PROFILES if market == "cn" else _US_PROMPT_PROFILES
     market_parser = markets.add_parser(market, help=label)
     commands = market_parser.add_subparsers(dest="command", metavar="COMMAND")
     commands.add_parser(

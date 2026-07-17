@@ -12,6 +12,8 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .ranking_policy_contract import (
     BOUNDED_RANKING_POLICY,
     BOUNDED_RANKING_PROMPT_VERSION,
+    BOUNDED_RANKING_V2_POLICY,
+    BOUNDED_RANKING_V2_PROMPT_VERSION,
 )
 
 SCHEMA_VERSION = "1.0.0"
@@ -29,6 +31,7 @@ PromptProfile = Literal[
     "legacy_stability_v3",
     "ranking_only_v1",
     "bounded_ranking_v1",
+    "bounded_ranking_v2",
 ]
 InputContract = Literal[
     "hot_sector_candidate_universe_v1",
@@ -45,6 +48,7 @@ ReadablePromptVersion = Literal[
     "2026-07-17.2",
     "2026-07-17.5",
     "2026-07-17.6",
+    "2026-07-17.7",
 ]
 
 _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
@@ -52,6 +56,7 @@ _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
     "legacy_stability_v3": LEGACY_STABILITY_PROMPT_VERSION,
     "ranking_only_v1": RANKING_ONLY_PROMPT_VERSION,
     "bounded_ranking_v1": BOUNDED_RANKING_PROMPT_VERSION,
+    "bounded_ranking_v2": BOUNDED_RANKING_V2_PROMPT_VERSION,
 }
 
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
@@ -96,6 +101,11 @@ def contract_info(market: Market) -> dict[str, object]:
             "prompt_version": BOUNDED_RANKING_PROMPT_VERSION,
             "output_contract": "research_selection_or_ranking_diagnostic",
             "ranking_policy": BOUNDED_RANKING_POLICY.contract_record(),
+        }
+        profiles["bounded_ranking_v2"] = {
+            "prompt_version": BOUNDED_RANKING_V2_PROMPT_VERSION,
+            "output_contract": "research_selection_or_ranking_diagnostic",
+            "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
         }
     return {
         "schema_version": CONTRACT_INFO_SCHEMA_VERSION,
@@ -357,6 +367,7 @@ __all__ = [
     "CONTRACT_INFO_ARTIFACT_TYPE",
     "CONTRACT_INFO_SCHEMA_VERSION",
     "BOUNDED_RANKING_PROMPT_VERSION",
+    "BOUNDED_RANKING_V2_PROMPT_VERSION",
     "InputContract",
     "LEGACY_STABILITY_PROMPT_VERSION",
     "Lineage",

@@ -11,7 +11,10 @@ from stock_analysis.ai_lab.evidence import validate_selection_evidence
 from stock_analysis.ai_lab.evidence_consistency import provider_parameters
 from stock_analysis.ai_lab.frozen_plan import write_pick_plan
 from stock_analysis.ai_lab.providers import DEEPSEEK_SYSTEM_MESSAGE, ProviderExchange
-from stock_analysis.ai_lab.ranking_policy_contract import BOUNDED_RANKING_POLICY
+from stock_analysis.ai_lab.ranking_policy_contract import (
+    BOUNDED_RANKING_POLICY,
+    BOUNDED_RANKING_V2_POLICY,
+)
 from stock_analysis.ai_lab.selection import build_selection_plan
 from stock_analysis.app.cli import create_parser, main
 
@@ -73,6 +76,11 @@ def test_contract_info_is_network_free_and_machine_readable(
                 "prompt_version": "2026-07-17.2",
                 "ranking_policy": BOUNDED_RANKING_POLICY.contract_record(),
             },
+            "bounded_ranking_v2": {
+                "output_contract": "research_selection_or_ranking_diagnostic",
+                "prompt_version": "2026-07-17.7",
+                "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
+            },
             "legacy_stability_v3": {
                 "output_contract": "legacy_stability_selection",
                 "prompt_version": "2026-07-15.3",
@@ -101,6 +109,7 @@ def test_us_contract_and_cli_do_not_advertise_cn_bounded_profile(
     assert main(["us", "contract-info"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert "bounded_ranking_v1" not in payload["prompt_profiles"]
+    assert "bounded_ranking_v2" not in payload["prompt_profiles"]
 
     parser = create_parser()
     with pytest.raises(SystemExit):

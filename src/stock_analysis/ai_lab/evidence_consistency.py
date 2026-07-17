@@ -180,6 +180,7 @@ def _archived_selection_plan(
         "legacy_stability_v3",
         "ranking_only_v1",
         "bounded_ranking_v1",
+        "bounded_ranking_v2",
     }:
         raise ValueError("evidence prompt profile is invalid")
     candidate_path = inside(root, _manifest_string(manifest, "candidate_path"))

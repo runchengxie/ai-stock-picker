@@ -254,7 +254,7 @@ def _ranking_policy_and_order(
         and _presentation_order(universe, market, supplied) != order
     ):
         raise ValueError(
-            "bounded_ranking_v1 requires its deterministic blinded presentation order"
+            "bounded ranking requires its deterministic blinded presentation order"
         )
     return policy, order
 
