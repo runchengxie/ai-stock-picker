@@ -170,7 +170,7 @@ def _archived_selection_plan(
     if style_value not in {"momentum", "quality", "growth"}:
         raise ValueError("evidence style is invalid")
     profile_value = _manifest_string(manifest, "prompt_profile")
-    if profile_value not in {"production_v4", "legacy_stability_v3"}:
+    if profile_value not in {"production_v4", "legacy_stability_v3", "ranking_only_v1"}:
         raise ValueError("evidence prompt profile is invalid")
     candidate_path = inside(root, _manifest_string(manifest, "candidate_path"))
     selection_as_of = _manifest_date(manifest, "selection_as_of")
