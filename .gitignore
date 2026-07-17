@@ -22,7 +22,7 @@ outputs/
 .envrc
 
 # Local tools and editors
-.codex/
+.codex
 .vscode/
 !.vscode/settings.json
 !.vscode/launch.json
