@@ -183,7 +183,7 @@ def _validate_rebuilt_plan(
         "provider_parameter_schema": plan.provider_parameter_schema,
         "provider_parameters": provider_parameters(plan),
         "prompt_version": plan.prompt_version,
-        "prompt_profile": "production_v4",
+        "prompt_profile": plan.prompt_profile,
         "input_sha256": plan.universe.input_sha256,
         "candidate_symbols_sha256": plan.universe.candidate_symbols_sha256,
         "api_calls": 0,
