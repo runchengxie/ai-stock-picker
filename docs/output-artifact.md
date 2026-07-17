@@ -154,7 +154,7 @@ uv run aipick cn validate \
 prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `source_concepts`。上游
 `risk_score` 会在进入 prompt 前投影成 `intraday_stability_score`，语义固定为
 `higher = more stable`。高值不得解释为风险更高。当前 prompt 版本为
-`2026-07-17.5`。该版本在继续移除真实股票代码示例和重复 `score` 的基础上，明确要求
+`2026-07-17.6`。该版本在继续移除真实股票代码示例和重复 `score` 的基础上，明确要求
 `source_topics` 与 `source_concepts` 不可互换；引用其中的值时使用
 `<字段标签>：[<该字段的一个精确值>]`，多个值分别重复字段标签。reader 兼容读取
 `2026-07-15.2`、`2026-07-15.3` 和 `2026-07-16.4`，正式 writer 只发布当前版本。
@@ -191,7 +191,7 @@ prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `sour
   "generated_at": "2026-07-15T02:00:00Z",
   "provider": "deepseek",
   "model": "deepseek-v4-flash",
-  "prompt_version": "2026-07-17.5",
+  "prompt_version": "2026-07-17.6",
   "style": "momentum",
   "input_contract": "hot_sector_candidate_universe_v1",
   "temporal_status": "contemporaneous",

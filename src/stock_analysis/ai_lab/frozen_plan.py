@@ -13,7 +13,7 @@ from typing import cast
 
 from .alias_contracts import alias_map_bytes, alias_maps_sha256
 from .bundle_paths import reject_symlink_path, safe_bundle_path
-from .contracts import Market, Style
+from .contracts import Market, Style, validate_prompt_profile
 from .evidence_consistency import (
     deepseek_inference_kwargs,
     numeric_ranking_bytes,
@@ -40,7 +40,7 @@ def write_pick_plan(
 ) -> Path:
     """Freeze one production prompt and all request parameters without a call."""
 
-    if plan.prompt_profile != "production_v4":
+    if plan.prompt_profile not in {"production_v4", "ranking_only_v1"}:
         raise ValueError("pick-plan requires the production prompt profile")
     if plan.provider_parameter_schema != "explicit_v2":
         raise ValueError("pick-plan requires explicit_v2 provider parameters")
@@ -151,7 +151,7 @@ def load_pick_plan(plan_path: str | Path) -> SelectionPlan:
         presentation_order=_string_list(payload, "presentation_order"),
         symbol_aliases=symbol_aliases,
         name_aliases=name_aliases,
-        prompt_profile="production_v4",
+        prompt_profile=validate_prompt_profile(_string(payload, "prompt_profile")),
         source_candidate_path=_string(payload, "source_candidate_path"),
         campaign_id=_optional_string(payload, "campaign_id"),
         trial_id=_optional_string(payload, "trial_id"),
@@ -183,7 +183,7 @@ def _validate_rebuilt_plan(
         "provider_parameter_schema": plan.provider_parameter_schema,
         "provider_parameters": provider_parameters(plan),
         "prompt_version": plan.prompt_version,
-        "prompt_profile": "production_v4",
+        "prompt_profile": plan.prompt_profile,
         "input_sha256": plan.universe.input_sha256,
         "candidate_symbols_sha256": plan.universe.candidate_symbols_sha256,
         "api_calls": 0,

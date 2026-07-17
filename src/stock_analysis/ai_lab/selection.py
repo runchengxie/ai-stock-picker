@@ -9,7 +9,7 @@ from datetime import date, datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Literal, cast
+from typing import cast
 from zoneinfo import ZoneInfo
 
 from pydantic import ValidationError
@@ -20,16 +20,21 @@ from .commentary_validation import (
     validate_legacy_customer_commentary,
 )
 from .contracts import (
+    LEGACY_STABILITY_PROMPT_VERSION,
     PROMPT_VERSION,
+    RANKING_ONLY_PROMPT_VERSION,
     Lineage,
     Market,
     ModelSelection,
+    PromptProfile,
     Provider,
     ReadablePromptVersion,
     SelectionArtifact,
     StockPick,
     Style,
     TemporalStatus,
+    prompt_version_for_profile,
+    validate_prompt_profile,
     validate_symbol,
 )
 from .credentials import load_provider_api_key
@@ -66,9 +71,6 @@ from .providers import (
     call_gemini_exchange,
     deepseek_provider_parameters,
 )
-
-PromptProfile = Literal["production_v4", "legacy_stability_v3"]
-LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
@@ -172,11 +174,7 @@ def build_selection_plan(
     order = _presentation_order(universe, market, presentation_order)
     aliases = _symbol_aliases(universe, market, symbol_aliases)
     names = _name_aliases(universe, market, name_aliases)
-    prompt_version: ReadablePromptVersion = (
-        PROMPT_VERSION
-        if prompt_profile == "production_v4"
-        else LEGACY_STABILITY_PROMPT_VERSION
-    )
+    prompt_version = prompt_version_for_profile(prompt_profile)
     prompt = _build_prompt(
         universe,
         market,
@@ -186,6 +184,7 @@ def build_selection_plan(
         symbol_aliases=dict(aliases),
         name_aliases=dict(names),
         include_legacy_example=prompt_profile == "legacy_stability_v3",
+        ranking_only=prompt_profile == "ranking_only_v1",
     )
     if aliases and names:
         _validate_identity_redaction(
@@ -239,8 +238,7 @@ def _selection_metadata(
     selected_model = (model or _DEFAULT_MODELS[market]).strip()
     if not selected_model:
         raise ValueError("model must not be empty")
-    if prompt_profile not in {"production_v4", "legacy_stability_v3"}:
-        raise ValueError("unsupported prompt profile")
+    validate_prompt_profile(prompt_profile)
     source_path = source_candidate_path or str(universe_path)
     if not Path(source_path).is_absolute():
         raise ValueError("source_candidate_path must be absolute")
@@ -467,7 +465,7 @@ def read_plan_candidate_snapshot(plan: SelectionPlan) -> bytes:
 def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Path:
     """Publish a complete artifact atomically, refusing every overwrite."""
 
-    if artifact.prompt_version != PROMPT_VERSION:
+    if artifact.prompt_version not in {PROMPT_VERSION, RANKING_ONLY_PROMPT_VERSION}:
         raise ValueError(
             "only artifacts using the current prompt version may be published"
         )

@@ -133,7 +133,7 @@ Prompt，任何真实股票代码或名称残留都会使执行失败。
 
 ## Prompt 版本隔离
 
-正式 `pick` 使用 production v4，版本为 `2026-07-17.5`。该版本移除了首行真实股票
+正式 `pick` 使用 production v4，版本为 `2026-07-17.6`。该版本移除了首行真实股票
 示例，每个候选只保留顶层 `score`，并增加 `source_topics` / `source_concepts` 的字段
 隔离与显式候选值引用规则。
 
