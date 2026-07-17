@@ -182,9 +182,11 @@ def _prompt_constraints(language_constraint: str) -> list[str]:
         "Use no outside facts and do not invent symbols.",
         (
             "Ground every sentence in the selected candidate object. Every sentence "
-            "in reasoning and risk_note must cite at least one approved natural "
-            "commentary_field_labels value or its exact supplied field key. Prefer "
-            "the natural customer label."
+            "in reasoning and risk_note must cite at least one supplied field using "
+            "field_key=value format with the exact English field key and a numeric "
+            "or text value (e.g., trend_score=1.0, ret_5d=0.358, confidence_label=high, "
+            "source_topics=[数据中心]). Use the exact field key listed under "
+            "commentary_field_labels, NOT a free-text Chinese description."
         ),
         (
             "Use only supplied candidate fields, including source_topics and "
