@@ -44,6 +44,7 @@ def write_pick_plan(
         "production_v4",
         "ranking_only_v1",
         "bounded_ranking_v1",
+        "bounded_ranking_v2",
     }:
         raise ValueError("pick-plan requires a current production or research profile")
     if plan.provider_parameter_schema != "explicit_v2":
