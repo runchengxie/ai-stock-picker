@@ -40,7 +40,7 @@ def write_pick_plan(
 ) -> Path:
     """Freeze one production prompt and all request parameters without a call."""
 
-    if plan.prompt_profile != "production_v4":
+    if plan.prompt_profile not in {"production_v4", "ranking_only_v1"}:
         raise ValueError("pick-plan requires the production prompt profile")
     if plan.provider_parameter_schema != "explicit_v2":
         raise ValueError("pick-plan requires explicit_v2 provider parameters")

@@ -11,6 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 SCHEMA_VERSION = "1.0.0"
 PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
+RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
 
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
@@ -284,6 +285,7 @@ __all__ = [
     "ModelPick",
     "ModelSelection",
     "PROMPT_VERSION",
+    "RANKING_ONLY_PROMPT_VERSION",
     "PointInTimeAssurance",
     "Provider",
     "ReadablePromptVersion",
