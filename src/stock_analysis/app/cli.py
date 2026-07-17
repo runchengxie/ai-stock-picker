@@ -13,7 +13,12 @@ from typing import cast
 
 from stock_analysis import __version__
 from stock_analysis.ai_lab.candidates import parse_date
-from stock_analysis.ai_lab.contracts import Market, SelectionArtifact, Style
+from stock_analysis.ai_lab.contracts import (
+    Market,
+    SelectionArtifact,
+    Style,
+    contract_info,
+)
 from stock_analysis.ai_lab.credentials import CredentialFileError
 from stock_analysis.ai_lab.evidence import (
     validate_selection_evidence,
@@ -58,8 +63,17 @@ def _add_market_parser(
     markets: argparse._SubParsersAction[argparse.ArgumentParser], market: str
 ) -> None:
     label = "US / Gemini" if market == "us" else "A-share / DeepSeek"
+    prompt_profiles = (
+        ("production_v4", "ranking_only_v1", "bounded_ranking_v1")
+        if market == "cn"
+        else ("production_v4", "ranking_only_v1")
+    )
     market_parser = markets.add_parser(market, help=label)
     commands = market_parser.add_subparsers(dest="command", metavar="COMMAND")
+    commands.add_parser(
+        "contract-info",
+        help="Print the versioned machine contract without calling a provider",
+    )
     pick = commands.add_parser("pick", help="Rerank a candidate snapshot")
     pick.add_argument(
         "--candidates",
@@ -83,6 +97,11 @@ def _add_market_parser(
     styles = ("quality", "growth") if market == "us" else ("momentum", "quality")
     pick.add_argument("--style", choices=styles)
     pick.add_argument("--model", help="Provider model name")
+    pick.add_argument(
+        "--prompt-profile",
+        choices=prompt_profiles,
+        default="production_v4",
+    )
     if market == "cn":
         _add_deepseek_inference_arguments(pick)
     pick.add_argument("--timeout", type=float, default=120.0)
@@ -95,7 +114,9 @@ def _add_market_parser(
         action="store_true",
         help="Validate input and build the prompt without calling a provider",
     )
-    _add_pick_plan_parser(commands, styles=styles, market=market)
+    _add_pick_plan_parser(
+        commands, styles=styles, market=market, prompt_profiles=prompt_profiles
+    )
     validate = commands.add_parser(
         "validate",
         help=(
@@ -153,6 +174,7 @@ def _add_pick_plan_parser(
     *,
     styles: tuple[str, ...],
     market: str,
+    prompt_profiles: tuple[str, ...],
 ) -> None:
     parser = commands.add_parser(
         "pick-plan", help="Freeze a production prompt and request without an API call"
@@ -164,7 +186,7 @@ def _add_pick_plan_parser(
     parser.add_argument("--model")
     parser.add_argument(
         "--prompt-profile",
-        choices=("production_v4", "ranking_only_v1"),
+        choices=prompt_profiles,
         default="production_v4",
     )
     parser.add_argument("--presentation-order-file")
@@ -186,6 +208,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         parser.print_help()
         return 0
     if args.command not in {
+        "contract-info",
         "pick",
         "pick-plan",
         "stability-plan",
@@ -198,6 +221,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     market = cast(Market, args.market.upper())
     try:
+        if args.command == "contract-info":
+            print(json.dumps(contract_info(market), ensure_ascii=False, sort_keys=True))
+            return 0
         if args.command == "validate":
             return _validate_selection_command(args, market)
         if args.command == "validate-evidence":
@@ -278,6 +304,9 @@ def _dry_run_payload(
         "model": plan.model,
         "provider_parameters": provider_parameters(plan),
         "style": plan.style,
+        "prompt_profile": plan.prompt_profile,
+        "prompt_version": plan.prompt_version,
+        **plan.ranking_policy_fields,
         "as_of": plan.universe.selection_as_of.isoformat(),
         "candidate_observation_date": (
             observation_date.isoformat() if observation_date is not None else None
@@ -435,9 +464,9 @@ def _execute_live_selection(args: argparse.Namespace, plan: SelectionPlan) -> in
         raise
     write_selection_evidence(plan, exchange, artifact, evidence_path)
     output = (
-        write_selection(artifact, output_path)
-        if plan.prompt_profile == "production_v4"
-        else write_stability_selection(artifact, output_path)
+        write_stability_selection(artifact, output_path)
+        if plan.prompt_profile == "legacy_stability_v3"
+        else write_selection(artifact, output_path)
     )
     print(f"wrote {len(artifact.picks)} validated picks to {output}")
     print(f"evidence_dir={evidence_path}")

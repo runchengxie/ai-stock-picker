@@ -2,17 +2,13 @@
 
 from __future__ import annotations
 
-import os
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
 from hashlib import sha256
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 from typing import cast
 from zoneinfo import ZoneInfo
-
-from pydantic import ValidationError
 
 from .candidates import Candidate, CandidateUniverse, load_candidate_universe
 from .commentary_validation import (
@@ -21,8 +17,6 @@ from .commentary_validation import (
 )
 from .contracts import (
     LEGACY_STABILITY_PROMPT_VERSION,
-    PROMPT_VERSION,
-    RANKING_ONLY_PROMPT_VERSION,
     Lineage,
     Market,
     ModelSelection,
@@ -71,9 +65,18 @@ from .providers import (
     call_gemini_exchange,
     deepseek_provider_parameters,
 )
+from .ranking_policy import (
+    blinded_presentation_order,
+    policy_evidence_record,
+    policy_for_profile,
+    validate_policy_plan,
+    validate_policy_selection,
+)
+from .ranking_policy_contract import BoundedRankingPolicy
+from .response_parser import parse_response as _parse_response
+from .selection_persistence import write_selection, write_stability_selection
 
 _MAX_PROMPT_BYTES = 2_000_000
-_MAX_RESPONSE_BYTES = 1_000_000
 _DEFAULT_MODELS: dict[Market, str] = {
     "CN": DEFAULT_DEEPSEEK_MODEL,
     "US": "gemini-2.5-flash",
@@ -107,9 +110,25 @@ class SelectionPlan:
     prompt: str
     prompt_version: ReadablePromptVersion
     prompt_profile: PromptProfile
+    ranking_policy: BoundedRankingPolicy | None
     presentation_order: tuple[str, ...]
     symbol_aliases: tuple[tuple[str, str], ...]
     name_aliases: tuple[tuple[str, str], ...]
+
+    @property
+    def ranking_policy_record(self) -> dict[str, object] | None:
+        """Return the exact run-bound policy record, when explicitly enabled."""
+
+        if self.ranking_policy is None:
+            return None
+        return policy_evidence_record(self.universe, self.ranking_policy)
+
+    @property
+    def ranking_policy_fields(self) -> dict[str, object]:
+        """Return optional manifest fields without changing existing profiles."""
+
+        record = self.ranking_policy_record
+        return {"ranking_policy": record} if record is not None else {}
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,15 +165,14 @@ def build_selection_plan(
     selected_style = _selected_style(market, style)
     if top_n < 1:
         raise ValueError("top_n must be positive")
-    universe = load_candidate_universe(
-        candidates_path,
-        market=market,
-        as_of=as_of,
-    )
+    universe = load_candidate_universe(candidates_path, market=market, as_of=as_of)
     if top_n > len(universe.candidates):
         raise ValueError(
             f"top_n={top_n} exceeds candidate count={len(universe.candidates)}"
         )
+    ranking_policy, order = _ranking_policy_and_order(
+        universe, market, top_n, prompt_profile, presentation_order
+    )
     provider: Provider = "deepseek" if market == "CN" else "gemini"
     selected_model, source_path = _selection_metadata(
         market=market,
@@ -171,7 +189,6 @@ def build_selection_plan(
         max_tokens=max_tokens,
         parameter_schema=provider_parameter_schema,
     )
-    order = _presentation_order(universe, market, presentation_order)
     aliases = _symbol_aliases(universe, market, symbol_aliases)
     names = _name_aliases(universe, market, name_aliases)
     prompt_version = prompt_version_for_profile(prompt_profile)
@@ -185,6 +202,7 @@ def build_selection_plan(
         name_aliases=dict(names),
         include_legacy_example=prompt_profile == "legacy_stability_v3",
         ranking_only=prompt_profile == "ranking_only_v1",
+        bounded_policy=ranking_policy,
     )
     if aliases and names:
         _validate_identity_redaction(
@@ -203,7 +221,7 @@ def build_selection_plan(
         campaign_id=campaign_id,
         trial_id=trial_id,
         plan_sha256=plan_sha256,
-        research_only=research_only,
+        research_only=research_only or ranking_policy is not None,
         thinking=selected_thinking,
         reasoning_effort=selected_effort,
         max_tokens=selected_max_tokens,
@@ -212,10 +230,33 @@ def build_selection_plan(
         prompt=prompt,
         prompt_version=prompt_version,
         prompt_profile=prompt_profile,
+        ranking_policy=ranking_policy,
         presentation_order=order,
         symbol_aliases=aliases,
         name_aliases=names,
     )
+
+
+def _ranking_policy_and_order(
+    universe: CandidateUniverse,
+    market: Market,
+    top_n: int,
+    prompt_profile: PromptProfile,
+    supplied: Sequence[str] | None,
+) -> tuple[BoundedRankingPolicy | None, tuple[str, ...]]:
+    policy = policy_for_profile(prompt_profile)
+    if policy is None:
+        return None, _presentation_order(universe, market, supplied)
+    validate_policy_plan(policy, universe, market=market, top_n=top_n)
+    order = blinded_presentation_order(universe, policy)
+    if (
+        supplied is not None
+        and _presentation_order(universe, market, supplied) != order
+    ):
+        raise ValueError(
+            "bounded_ranking_v1 requires its deterministic blinded presentation order"
+        )
+    return policy, order
 
 
 def _selected_style(market: Market, style: Style | None) -> Style:
@@ -250,6 +291,13 @@ def _selection_metadata(
     return selected_model, source_path
 
 
+def _selection_limitations(plan: SelectionPlan) -> list[str]:
+    limitations = list(plan.universe.evidence_limitations)
+    if plan.ranking_policy is not None:
+        limitations.append(plan.ranking_policy.selection_limitation)
+    return limitations
+
+
 def create_selection(
     plan: SelectionPlan,
     response_text: str,
@@ -263,6 +311,12 @@ def create_selection(
         raise ValueError("provider output must contain exactly top_n picks")
 
     picks = _create_picks(plan, model_selection)
+    if plan.ranking_policy is not None:
+        validate_policy_selection(
+            plan.universe,
+            plan.ranking_policy,
+            tuple(pick.symbol for pick in picks),
+        )
 
     created = generated_at or datetime.now(timezone.utc)
     if created.tzinfo is None:
@@ -271,7 +325,7 @@ def create_selection(
         "Asia/Shanghai" if plan.market == "CN" else "America/New_York"
     )
     temporal_status: TemporalStatus = "contemporaneous"
-    limitations = list(plan.universe.evidence_limitations)
+    limitations = _selection_limitations(plan)
     created_market_date = created.astimezone(market_timezone).date()
     if created_market_date < plan.universe.selection_as_of:
         raise ValueError("generated_at precedes the selection as_of date")
@@ -339,7 +393,10 @@ def ranking_symbols(plan: SelectionPlan, response_text: str) -> tuple[str, ...]:
                 f"provider output symbol is outside candidate pool: {symbol}"
             )
         symbols.append(symbol)
-    return tuple(symbols)
+    result = tuple(symbols)
+    if plan.ranking_policy is not None:
+        validate_policy_selection(plan.universe, plan.ranking_policy, result)
+    return result
 
 
 def _create_picks(
@@ -462,65 +519,6 @@ def read_plan_candidate_snapshot(plan: SelectionPlan) -> bytes:
     return payload
 
 
-def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Path:
-    """Publish a complete artifact atomically, refusing every overwrite."""
-
-    if artifact.prompt_version not in {PROMPT_VERSION, RANKING_ONLY_PROMPT_VERSION}:
-        raise ValueError(
-            "only artifacts using the current prompt version may be published"
-        )
-    return _write_selection_payload(artifact, output_path)
-
-
-def write_stability_selection(
-    artifact: SelectionArtifact, output_path: str | Path
-) -> Path:
-    """Persist a legacy stability result on an isolated research-only path."""
-
-    if artifact.prompt_version != LEGACY_STABILITY_PROMPT_VERSION:
-        raise ValueError("stability output requires the frozen legacy prompt version")
-    if artifact.eligible_as_oos_evidence:
-        raise ValueError("stability output must remain ineligible as OOS evidence")
-    return _write_selection_payload(artifact, output_path)
-
-
-def _write_selection_payload(
-    artifact: SelectionArtifact, output_path: str | Path
-) -> Path:
-    destination = Path(output_path).expanduser().resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    serialized = artifact.model_dump_json(indent=2)
-    SelectionArtifact.model_validate_json(serialized, strict=True)
-    payload = f"{serialized}\n".encode()
-    temporary: Path | None = None
-    try:
-        with NamedTemporaryFile(
-            mode="wb",
-            prefix=f".{destination.name}.",
-            suffix=".tmp",
-            dir=destination.parent,
-            delete=False,
-        ) as handle:
-            temporary = Path(handle.name)
-            handle.write(payload)
-            handle.flush()
-            os.fsync(handle.fileno())
-        try:
-            # A same-filesystem hard link is atomic and fails if another writer
-            # won the destination name. Unlike replace(), it never overwrites a
-            # point-in-time artifact or its receipt lineage.
-            os.link(temporary, destination)
-        except FileExistsError as exc:
-            raise FileExistsError(
-                f"selection output already exists; reuse it or choose a new path: "
-                f"{destination}"
-            ) from exc
-    finally:
-        if temporary is not None:
-            temporary.unlink(missing_ok=True)
-    return destination
-
-
 def validate_selection_artifact(
     artifact: SelectionArtifact,
     candidates_path: str | Path,
@@ -610,7 +608,7 @@ def _validate_artifact_candidate_lineage(
         if actual[field] != expected_value:
             raise ValueError(f"selection {field} does not match candidate snapshot")
 
-    expected_limitations = list(universe.evidence_limitations)
+    expected_limitations = _selection_limitations(plan)
     if artifact.temporal_status == "retrospective_simulation":
         expected_limitations.append("selection_generated_after_as_of")
     if artifact.evidence_limitations != tuple(dict.fromkeys(expected_limitations)):
@@ -645,6 +643,12 @@ def _validate_artifact_picks(
             )
         else:
             _validate_legacy_pick_commentary(plan, pick.reasoning, pick.risk_note)
+    if plan.ranking_policy is not None:
+        validate_policy_selection(
+            plan.universe,
+            plan.ranking_policy,
+            tuple(pick.symbol for pick in artifact.picks),
+        )
 
 
 def _validate_legacy_pick_commentary(
@@ -762,20 +766,6 @@ def _plan_deepseek_parameters(
         plan.reasoning_effort,
         plan.max_tokens,
     )
-
-
-def _parse_response(response_text: str) -> ModelSelection:
-    if len(response_text.encode()) > _MAX_RESPONSE_BYTES:
-        raise ValueError("provider output exceeds the 1 MB safety limit")
-    text = response_text.strip()
-    if text.startswith("```json\n") and text.endswith("\n```"):
-        text = text[len("```json\n") : -len("\n```")].strip()
-    elif "```" in text:
-        raise ValueError("provider output contains malformed markdown fences")
-    try:
-        return ModelSelection.model_validate_json(text, strict=True)
-    except ValidationError as exc:
-        raise ValueError(f"provider output violates the strict schema: {exc}") from exc
 
 
 __all__ = [

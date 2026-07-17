@@ -22,6 +22,11 @@ from .providers import (
     ThinkingMode,
     deepseek_provider_parameters,
 )
+from .ranking_policy import (
+    hot_sector_relevance,
+    numeric_ranked_candidates,
+    numeric_ranking_method,
+)
 from .request_validation import validate_provider_request
 from .selection import (
     PromptProfile,
@@ -170,7 +175,12 @@ def _archived_selection_plan(
     if style_value not in {"momentum", "quality", "growth"}:
         raise ValueError("evidence style is invalid")
     profile_value = _manifest_string(manifest, "prompt_profile")
-    if profile_value not in {"production_v4", "legacy_stability_v3", "ranking_only_v1"}:
+    if profile_value not in {
+        "production_v4",
+        "legacy_stability_v3",
+        "ranking_only_v1",
+        "bounded_ranking_v1",
+    }:
         raise ValueError("evidence prompt profile is invalid")
     candidate_path = inside(root, _manifest_string(manifest, "candidate_path"))
     selection_as_of = _manifest_date(manifest, "selection_as_of")
@@ -249,6 +259,10 @@ def _validate_selection_manifest(
     for field, expected_value in expected.items():
         if manifest.get(field) != expected_value:
             raise ValueError(f"evidence manifest {field} is inconsistent")
+    if manifest.get("ranking_policy") != plan.ranking_policy_record:
+        raise ValueError("evidence manifest ranking_policy is inconsistent")
+    if plan.ranking_policy is None and "ranking_policy" in manifest:
+        raise ValueError("unbounded evidence must not declare a ranking policy")
     source_path = _manifest_string(manifest, "source_candidate_path")
     if not Path(source_path).is_absolute():
         raise ValueError("source_candidate_path must be absolute")
@@ -385,32 +399,15 @@ def numeric_ranking_bytes(plan: SelectionPlan) -> bytes:
     hot_sector = plan.universe.input_contract == "hot_sector_candidate_universe_v1"
     relevance_by_symbol = (
         {
-            candidate.symbol: _hot_sector_relevance(candidate.features)
+            candidate.symbol: hot_sector_relevance(candidate)
             for candidate in plan.universe.candidates
         }
         if hot_sector
         else {}
     )
-    if hot_sector:
-        ranked = sorted(
-            plan.universe.candidates,
-            key=lambda candidate: (
-                -relevance_by_symbol[candidate.symbol],
-                -candidate.score,
-                candidate.symbol,
-            ),
-        )
-    else:
-        ranked = sorted(
-            plan.universe.candidates,
-            key=lambda candidate: (-candidate.score, candidate.symbol),
-        )
+    ranked = numeric_ranked_candidates(plan.universe)
     payload = {
-        "ranking_method": (
-            "relevance_desc_score_desc_symbol_asc"
-            if hot_sector
-            else "score_desc_symbol_asc"
-        ),
+        "ranking_method": numeric_ranking_method(plan.universe),
         "input_count": len(ranked),
         "rows": [
             {
@@ -431,17 +428,6 @@ def numeric_ranking_bytes(plan: SelectionPlan) -> bytes:
         ],
     }
     return _json_bytes(payload)
-
-
-def _hot_sector_relevance(features: Mapping[str, object]) -> float:
-    value = features.get("relevance")
-    if (
-        isinstance(value, bool)
-        or not isinstance(value, int | float)
-        or not math.isfinite(float(value))
-    ):
-        raise ValueError("hot-sector numeric ranking requires finite relevance")
-    return float(value)
 
 
 def provider_parameters(

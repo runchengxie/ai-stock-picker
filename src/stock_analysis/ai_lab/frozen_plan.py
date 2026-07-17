@@ -40,8 +40,12 @@ def write_pick_plan(
 ) -> Path:
     """Freeze one production prompt and all request parameters without a call."""
 
-    if plan.prompt_profile not in {"production_v4", "ranking_only_v1"}:
-        raise ValueError("pick-plan requires the production prompt profile")
+    if plan.prompt_profile not in {
+        "production_v4",
+        "ranking_only_v1",
+        "bounded_ranking_v1",
+    }:
+        raise ValueError("pick-plan requires a current production or research profile")
     if plan.provider_parameter_schema != "explicit_v2":
         raise ValueError("pick-plan requires explicit_v2 provider parameters")
     _validate_optional_id(campaign_id, "campaign_id")
@@ -70,6 +74,7 @@ def write_pick_plan(
         "provider_parameters": provider_parameters(plan),
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
+        **plan.ranking_policy_fields,
         "selection_as_of": plan.universe.selection_as_of.isoformat(),
         "style": plan.style,
         "top_n": plan.top_n,
@@ -195,6 +200,10 @@ def _validate_rebuilt_plan(
     for field, value in expected.items():
         if payload.get(field) != value:
             raise ValueError(f"pick plan {field} is inconsistent")
+    if payload.get("ranking_policy") != plan.ranking_policy_record:
+        raise ValueError("pick plan ranking_policy is inconsistent")
+    if plan.ranking_policy is None and "ranking_policy" in payload:
+        raise ValueError("unbounded pick plan must not declare a ranking policy")
     prompt = _indexed_path(root, payload, "prompt_path").read_bytes()
     if prompt != plan.prompt.encode() or payload.get("prompt_sha256") != _digest(
         prompt

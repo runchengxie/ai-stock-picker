@@ -682,6 +682,7 @@ def _selection_manifest(
         ),
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
+        **plan.ranking_policy_fields,
         "style": plan.style,
         "top_n": plan.top_n,
         "candidate_path": candidate_name,

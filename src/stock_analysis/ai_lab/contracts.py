@@ -9,7 +9,14 @@ from zoneinfo import ZoneInfo
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from .ranking_policy_contract import (
+    BOUNDED_RANKING_POLICY,
+    BOUNDED_RANKING_PROMPT_VERSION,
+)
+
 SCHEMA_VERSION = "1.0.0"
+CONTRACT_INFO_SCHEMA_VERSION = "1.0.0"
+CONTRACT_INFO_ARTIFACT_TYPE = "ai_stock_picker_contract_info"
 PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
 RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
 LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
@@ -17,7 +24,12 @@ LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 Market = Literal["CN", "US"]
 Provider = Literal["deepseek", "gemini"]
 Style = Literal["momentum", "quality", "growth"]
-PromptProfile = Literal["production_v4", "legacy_stability_v3", "ranking_only_v1"]
+PromptProfile = Literal[
+    "production_v4",
+    "legacy_stability_v3",
+    "ranking_only_v1",
+    "bounded_ranking_v1",
+]
 InputContract = Literal[
     "hot_sector_candidate_universe_v1",
     "generic_json_manifest",
@@ -30,6 +42,7 @@ ReadablePromptVersion = Literal[
     "2026-07-15.3",
     "2026-07-16.4",
     "2026-07-17.1",
+    "2026-07-17.2",
     "2026-07-17.5",
     "2026-07-17.6",
 ]
@@ -38,6 +51,7 @@ _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
     "production_v4": PROMPT_VERSION,
     "legacy_stability_v3": LEGACY_STABILITY_PROMPT_VERSION,
     "ranking_only_v1": RANKING_ONLY_PROMPT_VERSION,
+    "bounded_ranking_v1": BOUNDED_RANKING_PROMPT_VERSION,
 }
 
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
@@ -57,6 +71,43 @@ def prompt_version_for_profile(value: str) -> ReadablePromptVersion:
     """Resolve the artifact version owned by one prompt profile."""
 
     return _PROMPT_VERSIONS[validate_prompt_profile(value)]
+
+
+def contract_info(market: Market) -> dict[str, object]:
+    """Return the versioned machine contract exposed to downstream consumers."""
+
+    provider: Provider = "deepseek" if market == "CN" else "gemini"
+    profiles: dict[str, object] = {
+        "production_v4": {
+            "prompt_version": PROMPT_VERSION,
+            "output_contract": "publication_selection",
+        },
+        "ranking_only_v1": {
+            "prompt_version": RANKING_ONLY_PROMPT_VERSION,
+            "output_contract": "research_selection_or_ranking_diagnostic",
+        },
+        "legacy_stability_v3": {
+            "prompt_version": LEGACY_STABILITY_PROMPT_VERSION,
+            "output_contract": "legacy_stability_selection",
+        },
+    }
+    if market == "CN":
+        profiles["bounded_ranking_v1"] = {
+            "prompt_version": BOUNDED_RANKING_PROMPT_VERSION,
+            "output_contract": "research_selection_or_ranking_diagnostic",
+            "ranking_policy": BOUNDED_RANKING_POLICY.contract_record(),
+        }
+    return {
+        "schema_version": CONTRACT_INFO_SCHEMA_VERSION,
+        "artifact_type": CONTRACT_INFO_ARTIFACT_TYPE,
+        "market": market,
+        "provider": provider,
+        "selection_contract": {
+            "schema_version": SCHEMA_VERSION,
+            "artifact_type": "ai_stock_selection",
+        },
+        "prompt_profiles": profiles,
+    }
 
 
 def validate_symbol(symbol: str, market: Market) -> str:
@@ -303,6 +354,9 @@ class SelectionArtifact(BaseModel):
 
 
 __all__ = [
+    "CONTRACT_INFO_ARTIFACT_TYPE",
+    "CONTRACT_INFO_SCHEMA_VERSION",
+    "BOUNDED_RANKING_PROMPT_VERSION",
     "InputContract",
     "LEGACY_STABILITY_PROMPT_VERSION",
     "Lineage",
@@ -320,6 +374,7 @@ __all__ = [
     "StockPick",
     "Style",
     "TemporalStatus",
+    "contract_info",
     "prompt_version_for_profile",
     "validate_prompt_profile",
     "validate_symbol",
