@@ -21,6 +21,7 @@ from .commentary_validation import (
 )
 from .contracts import (
     PROMPT_VERSION,
+    RANKING_ONLY_PROMPT_VERSION,
     Lineage,
     Market,
     ModelSelection,
@@ -67,8 +68,9 @@ from .providers import (
     deepseek_provider_parameters,
 )
 
-PromptProfile = Literal["production_v4", "legacy_stability_v3"]
+PromptProfile = Literal["production_v4", "legacy_stability_v3", "ranking_only_v1"]
 LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
+RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
 
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_RESPONSE_BYTES = 1_000_000
@@ -172,11 +174,12 @@ def build_selection_plan(
     order = _presentation_order(universe, market, presentation_order)
     aliases = _symbol_aliases(universe, market, symbol_aliases)
     names = _name_aliases(universe, market, name_aliases)
-    prompt_version: ReadablePromptVersion = (
-        PROMPT_VERSION
-        if prompt_profile == "production_v4"
-        else LEGACY_STABILITY_PROMPT_VERSION
-    )
+    if prompt_profile == "ranking_only_v1":
+        prompt_version: ReadablePromptVersion = RANKING_ONLY_PROMPT_VERSION
+    elif prompt_profile == "production_v4":
+        prompt_version: ReadablePromptVersion = PROMPT_VERSION
+    else:
+        prompt_version: ReadablePromptVersion = LEGACY_STABILITY_PROMPT_VERSION
     prompt = _build_prompt(
         universe,
         market,
@@ -239,7 +242,7 @@ def _selection_metadata(
     selected_model = (model or _DEFAULT_MODELS[market]).strip()
     if not selected_model:
         raise ValueError("model must not be empty")
-    if prompt_profile not in {"production_v4", "legacy_stability_v3"}:
+    if prompt_profile not in {"production_v4", "legacy_stability_v3", "ranking_only_v1"}:
         raise ValueError("unsupported prompt profile")
     source_path = source_candidate_path or str(universe_path)
     if not Path(source_path).is_absolute():
@@ -467,7 +470,7 @@ def read_plan_candidate_snapshot(plan: SelectionPlan) -> bytes:
 def write_selection(artifact: SelectionArtifact, output_path: str | Path) -> Path:
     """Publish a complete artifact atomically, refusing every overwrite."""
 
-    if artifact.prompt_version != PROMPT_VERSION:
+    if artifact.prompt_version not in {PROMPT_VERSION, RANKING_ONLY_PROMPT_VERSION}:
         raise ValueError(
             "only artifacts using the current prompt version may be published"
         )

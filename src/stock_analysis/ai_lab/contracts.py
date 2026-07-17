@@ -52,8 +52,8 @@ class ModelPick(BaseModel):
 
     symbol: str = Field(min_length=1, max_length=15)
     confidence_score: int = Field(ge=1, le=10)
-    reasoning: str = Field(min_length=1, max_length=1000)
-    risk_note: str = Field(min_length=1, max_length=500)
+    reasoning: str = Field(default="", max_length=1000)
+    risk_note: str = Field(default="", max_length=500)
 
     @field_validator("symbol")
     @classmethod
@@ -79,8 +79,8 @@ class StockPick(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     topic: str = Field(min_length=1, max_length=500)
     confidence_score: int = Field(ge=1, le=10)
-    reasoning: str = Field(min_length=1, max_length=1000)
-    risk_note: str = Field(min_length=1, max_length=500)
+    reasoning: str = Field(default="", max_length=1000)
+    risk_note: str = Field(default="", max_length=500)
 
 
 class Lineage(BaseModel):

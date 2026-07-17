@@ -179,6 +179,8 @@ def validate_customer_commentary(
 ) -> None:
     """Validate one commentary field against language, policy, and candidate data."""
 
+    if not value.strip():
+        return
     normalized = unicodedata.normalize("NFKC", value)
     _require_market_language(field, normalized, market)
     available_fields = {"symbol", "name", "topic", "score", *candidate.features}
