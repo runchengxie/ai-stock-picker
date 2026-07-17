@@ -151,7 +151,7 @@ def load_pick_plan(plan_path: str | Path) -> SelectionPlan:
         presentation_order=_string_list(payload, "presentation_order"),
         symbol_aliases=symbol_aliases,
         name_aliases=name_aliases,
-        prompt_profile="production_v4",
+        prompt_profile=_string(payload, "prompt_profile"),
         source_candidate_path=_string(payload, "source_candidate_path"),
         campaign_id=_optional_string(payload, "campaign_id"),
         trial_id=_optional_string(payload, "trial_id"),
