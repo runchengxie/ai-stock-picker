@@ -46,7 +46,7 @@ def selection_contracts(
                 "ranking_contract": "passed",
                 "publication_contract": "failed",
             },
-            _ranking_diagnostic_bytes(symbols),
+            ranking_diagnostic_bytes(symbols),
         )
     contracts = {
         "transport_contract": "passed",
@@ -57,7 +57,9 @@ def selection_contracts(
     return contracts, diagnostic
 
 
-def _ranking_diagnostic_bytes(symbols: tuple[str, ...]) -> bytes:
+def ranking_diagnostic_bytes(symbols: tuple[str, ...]) -> bytes:
+    """Serialize the canonical owner ranking diagnostic artifact."""
+
     payload = {
         "schema_version": "1.0.0",
         "artifact_type": "ai_ranking_diagnostic",
@@ -71,4 +73,4 @@ def _ranking_diagnostic_bytes(symbols: tuple[str, ...]) -> bytes:
     )
 
 
-__all__ = ["selection_contracts"]
+__all__ = ["ranking_diagnostic_bytes", "selection_contracts"]

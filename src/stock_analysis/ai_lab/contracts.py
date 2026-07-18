@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import re
 from datetime import date, datetime, time, timedelta
+from hashlib import sha256
 from typing import Literal
 from zoneinfo import ZoneInfo
 
@@ -17,8 +19,28 @@ from .ranking_policy_contract import (
 )
 
 SCHEMA_VERSION = "1.0.0"
-CONTRACT_INFO_SCHEMA_VERSION = "1.0.0"
+CONTRACT_INFO_SCHEMA_VERSION = "1.1.0"
 CONTRACT_INFO_ARTIFACT_TYPE = "ai_stock_picker_contract_info"
+HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID = "hotsector.source_concepts.theme_only"
+HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION = "1.0.0"
+HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256 = (
+    "d14282e8047367ba61ea762cd3c3de56162329c12f1778c9681246ec7f0f0b40"
+)
+SHADOW_CAMPAIGN_SCHEMA_VERSION = "1.0.0"
+SHADOW_REPETITIONS = 3
+SHADOW_MIN_VALID_REPETITIONS = 2
+SHADOW_REPETITION_NAMES = tuple(
+    f"repetition-{index:02d}" for index in range(1, SHADOW_REPETITIONS + 1)
+)
+SHADOW_TOMBSTONE_REASONS = frozenset(
+    {
+        "provider_call_failed",
+        "transport_contract_failed",
+        "ranking_contract_failed",
+        "watchdog_missing_repetition",
+        "insufficient_valid_repetitions",
+    }
+)
 PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
 RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
 LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
@@ -35,6 +57,7 @@ PromptProfile = Literal[
 ]
 InputContract = Literal[
     "hot_sector_candidate_universe_v1",
+    "hot_sector_candidate_universe_v2",
     "generic_json_manifest",
     "legacy_csv",
 ]
@@ -107,7 +130,7 @@ def contract_info(market: Market) -> dict[str, object]:
             "output_contract": "research_selection_or_ranking_diagnostic",
             "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
         }
-    return {
+    payload: dict[str, object] = {
         "schema_version": CONTRACT_INFO_SCHEMA_VERSION,
         "artifact_type": CONTRACT_INFO_ARTIFACT_TYPE,
         "market": market,
@@ -117,7 +140,69 @@ def contract_info(market: Market) -> dict[str, object]:
             "artifact_type": "ai_stock_selection",
         },
         "prompt_profiles": profiles,
+        "model_response_contracts": {
+            "publication_selection": _schema_record(ModelSelection.model_json_schema()),
+            "ranking_selection": _schema_record(
+                RankingModelSelection.model_json_schema()
+            ),
+        },
     }
+    if market == "CN":
+        payload["accepted_candidate_contracts"] = {
+            "hot_sector_candidate_universe_v1": {"schema_version": "1.0.0"},
+            "hot_sector_candidate_universe_v2": {
+                "schema_version": "2.0.0",
+                "source_concepts_policy_id": (HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID),
+                "source_concepts_policy_version": (
+                    HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION
+                ),
+                "source_concepts_policy_sha256": (
+                    HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256
+                ),
+            },
+        }
+        payload["shadow_campaign_contract"] = {
+            "schema_version": SHADOW_CAMPAIGN_SCHEMA_VERSION,
+            "prompt_profile": "bounded_ranking_v2",
+            "prompt_version": BOUNDED_RANKING_V2_PROMPT_VERSION,
+            "repetitions": SHADOW_REPETITIONS,
+            "min_valid_repetitions": SHADOW_MIN_VALID_REPETITIONS,
+            "providers": ["deepseek", "openai"],
+            "partition_layout": "campaign/provider--model/date/repetition",
+            "repetition_artifact_type": "ai_shadow_repetition",
+            "consensus_artifact_type": "ai_shadow_consensus",
+            "ranking_eligibility": "ranking_contract=passed",
+        }
+    payload["contract_sha256"] = canonical_contract_sha256(payload)
+    ContractInfoArtifact.model_validate(payload, strict=True)
+    return payload
+
+
+def contract_info_json_schema() -> dict[str, object]:
+    """Return the JSON Schema for the machine-readable contract-info envelope."""
+
+    return ContractInfoArtifact.model_json_schema()
+
+
+def canonical_contract_sha256(payload: dict[str, object]) -> str:
+    """Hash one contract payload after removing its self-referential digest."""
+
+    core = dict(payload)
+    core.pop("contract_sha256", None)
+    return sha256(_canonical_json(core)).hexdigest()
+
+
+def _schema_record(schema: dict[str, object]) -> dict[str, object]:
+    return {
+        "json_schema": schema,
+        "sha256": sha256(_canonical_json(schema)).hexdigest(),
+    }
+
+
+def _canonical_json(value: object) -> bytes:
+    return json.dumps(
+        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode()
 
 
 def validate_symbol(symbol: str, market: Market) -> str:
@@ -153,6 +238,59 @@ class ModelSelection(BaseModel):
     model_config = ConfigDict(extra="forbid", strict=True)
 
     picks: list[ModelPick]
+
+
+class RankingModelPick(BaseModel):
+    """Minimal response item for ranking-only and bounded research profiles."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    symbol: str = Field(min_length=1, max_length=15)
+    confidence_score: int = Field(ge=1, le=10)
+
+    @field_validator("symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return value.strip().upper()
+
+
+class RankingModelSelection(BaseModel):
+    """Canonical strict provider schema for research-only rankings."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    picks: list[RankingModelPick]
+
+
+class ContractInfoArtifact(BaseModel):
+    """Schema of the additive machine handshake exposed to consumers."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    schema_version: Literal["1.1.0"]
+    artifact_type: Literal["ai_stock_picker_contract_info"]
+    market: Market
+    provider: Provider
+    selection_contract: dict[str, object]
+    prompt_profiles: dict[str, object]
+    model_response_contracts: dict[str, object]
+    accepted_candidate_contracts: dict[str, object] | None = None
+    shadow_campaign_contract: dict[str, object] | None = None
+    contract_sha256: str
+
+    @model_validator(mode="after")
+    def validate_market_capabilities(self) -> ContractInfoArtifact:
+        has_cn_capabilities = (
+            self.accepted_candidate_contracts is not None
+            and self.shadow_campaign_contract is not None
+        )
+        if has_cn_capabilities != (self.market == "CN"):
+            raise ValueError("CN contract-info capabilities are inconsistent")
+        if canonical_contract_sha256(self.model_dump(exclude_none=True)) != (
+            self.contract_sha256
+        ):
+            raise ValueError("contract-info digest is inconsistent")
+        return self
 
 
 class StockPick(BaseModel):
@@ -283,9 +421,10 @@ class SelectionArtifact(BaseModel):
             )
 
     def _validate_lineage_assurance(self) -> None:
-        recognized_hot_contract = (
-            self.input_contract == "hot_sector_candidate_universe_v1"
-        )
+        recognized_hot_contract = self.input_contract in {
+            "hot_sector_candidate_universe_v1",
+            "hot_sector_candidate_universe_v2",
+        }
         if (self.point_in_time_assurance == "signal_date_only") != (
             recognized_hot_contract
         ):
@@ -366,14 +505,20 @@ class SelectionArtifact(BaseModel):
 __all__ = [
     "CONTRACT_INFO_ARTIFACT_TYPE",
     "CONTRACT_INFO_SCHEMA_VERSION",
+    "ContractInfoArtifact",
     "BOUNDED_RANKING_PROMPT_VERSION",
     "BOUNDED_RANKING_V2_PROMPT_VERSION",
     "InputContract",
+    "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID",
+    "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256",
+    "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION",
     "LEGACY_STABILITY_PROMPT_VERSION",
     "Lineage",
     "Market",
     "ModelPick",
     "ModelSelection",
+    "RankingModelPick",
+    "RankingModelSelection",
     "PROMPT_VERSION",
     "RANKING_ONLY_PROMPT_VERSION",
     "PointInTimeAssurance",
@@ -381,11 +526,18 @@ __all__ = [
     "Provider",
     "ReadablePromptVersion",
     "SCHEMA_VERSION",
+    "SHADOW_CAMPAIGN_SCHEMA_VERSION",
+    "SHADOW_MIN_VALID_REPETITIONS",
+    "SHADOW_REPETITIONS",
+    "SHADOW_REPETITION_NAMES",
+    "SHADOW_TOMBSTONE_REASONS",
     "SelectionArtifact",
     "StockPick",
     "Style",
     "TemporalStatus",
     "contract_info",
+    "contract_info_json_schema",
+    "canonical_contract_sha256",
     "prompt_version_for_profile",
     "validate_prompt_profile",
     "validate_symbol",

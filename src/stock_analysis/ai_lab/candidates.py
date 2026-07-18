@@ -13,9 +13,36 @@ from pathlib import Path
 from typing import Literal, TypeGuard, cast
 from zoneinfo import ZoneInfo
 
-from .contracts import InputContract, Market, PointInTimeAssurance, validate_symbol
+from .contracts import (
+    HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID,
+    HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256,
+    HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION,
+    InputContract,
+    Market,
+    PointInTimeAssurance,
+    validate_symbol,
+)
 
 _MAX_INPUT_BYTES = 10_000_000
+HOT_SECTOR_INPUT_CONTRACTS = frozenset(
+    {
+        "hot_sector_candidate_universe_v1",
+        "hot_sector_candidate_universe_v2",
+    }
+)
+_SOURCE_CONCEPTS_POLICY_CORE: dict[str, object] = {
+    "policy_id": HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID,
+    "version": HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION,
+    "allowed": ["theme", "concept", "related_concepts"],
+    "excluded": ["tag", "lu_desc", "status", "rank_reason", "limit_type"],
+    "normalizer_id": "hotsector.concept_token.v1",
+}
+SOURCE_CONCEPTS_POLICY_SHA256 = HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256
+_HOT_SECTOR_V2_MODEL_IDENTITY = {
+    "model_id": "hotsector-theme-v3",
+    "model_version": "3.0.0",
+    "feature_set_id": "topic-concept-hotspot-overlay-theme-only-v1",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +85,12 @@ def parse_date(value: str) -> date:
         raise ValueError(f"invalid date {value!r}; use YYYY-MM-DD or YYYYMMDD") from exc
 
 
+def is_hot_sector_contract(contract: InputContract) -> bool:
+    """Return whether an input uses a recognized hot-sector owner contract."""
+
+    return contract in HOT_SECTOR_INPUT_CONTRACTS
+
+
 def load_candidate_universe(
     path: str | Path,
     *,
@@ -81,9 +114,13 @@ def load_candidate_universe(
         observation_date, source_generated_at, data_cutoff = _validate_manifest(
             metadata, rows, as_of
         )
-        if contract == "hot_sector_candidate_universe_v1":
+        if contract in HOT_SECTOR_INPUT_CONTRACTS:
             _validate_hot_sector_contract(
-                metadata, rows, observation_date, source_generated_at
+                metadata,
+                rows,
+                observation_date,
+                source_generated_at,
+                contract=contract,
             )
         assurance, limitations = _classify_manifest(data_cutoff, contract, metadata)
         upstream_execution_not_before: Literal["next_trading_session"] | None = (
@@ -200,11 +237,14 @@ def _detect_json_contract(metadata: dict[str, object], market: Market) -> InputC
         if declared_market is not None and declared_market != market:
             raise ValueError("manifest market does not match requested market")
         return "generic_json_manifest"
-    expected = ("1.0.0", "hot_sector_candidate_universe", "CN")
     actual = (schema_version, artifact_type, declared_market)
-    if actual != expected or market != "CN":
+    if market != "CN" or artifact_type != "hot_sector_candidate_universe":
         raise ValueError(f"unsupported candidate contract identity: {actual!r}")
-    return "hot_sector_candidate_universe_v1"
+    if schema_version == "1.0.0" and declared_market == "CN":
+        return "hot_sector_candidate_universe_v1"
+    if schema_version == "2.0.0" and declared_market == "CN":
+        return "hot_sector_candidate_universe_v2"
+    raise ValueError(f"unsupported candidate contract identity: {actual!r}")
 
 
 def _validate_hot_sector_contract(
@@ -212,13 +252,17 @@ def _validate_hot_sector_contract(
     rows: list[dict[str, object]],
     observation_date: date,
     generated_at: datetime,
+    *,
+    contract: InputContract,
 ) -> None:
     if not isinstance(metadata.get("candidate_universe"), list):
         raise ValueError("hot-sector candidate_universe must be an array")
     expected_date, temporal_context = _validate_hot_temporal_metadata(
         metadata, observation_date, generated_at
     )
-    _validate_hot_payload(metadata, rows)
+    _validate_hot_payload(metadata, rows, contract=contract)
+    if contract == "hot_sector_candidate_universe_v2":
+        _validate_hot_sector_v2(metadata)
     _validate_hot_provenance(metadata, expected_date)
     _validate_hot_evidence(metadata, temporal_context)
 
@@ -271,7 +315,10 @@ def _validate_hot_temporal_metadata(
 
 
 def _validate_hot_payload(
-    metadata: dict[str, object], rows: list[dict[str, object]]
+    metadata: dict[str, object],
+    rows: list[dict[str, object]],
+    *,
+    contract: InputContract,
 ) -> None:
     topics = metadata.get("topics")
     if not isinstance(topics, list):
@@ -282,7 +329,7 @@ def _validate_hot_payload(
         if not isinstance(metadata.get(field), dict):
             raise ValueError(f"hot-sector {field} must be an object")
     for row in rows:
-        _validate_hot_candidate_row(row)
+        _validate_hot_candidate_row(row, contract=contract)
 
 
 def _validate_hot_topic(value: object) -> None:
@@ -302,7 +349,9 @@ def _validate_hot_topic(value: object) -> None:
         _require_nonempty_string_array(topic.get(field), f"topic.{field}")
 
 
-def _validate_hot_candidate_row(row: dict[str, object]) -> None:
+def _validate_hot_candidate_row(
+    row: dict[str, object], *, contract: InputContract
+) -> None:
     name = row.get("name")
     if not isinstance(name, str) or not name.strip() or len(name.strip()) > 64:
         raise ValueError("hot-sector candidate name must be 1-64 characters")
@@ -317,6 +366,39 @@ def _validate_hot_candidate_row(row: dict[str, object]) -> None:
             not isinstance(item, str) or not item.strip() for item in values
         ):
             raise ValueError(f"candidate {field} must be an array of non-empty strings")
+    if contract == "hot_sector_candidate_universe_v2":
+        for field in (
+            "source_event_tags",
+            "source_event_statuses",
+            "source_event_reasons",
+        ):
+            values = row.get(field)
+            if not isinstance(values, list) or any(
+                not isinstance(item, str) or not item.strip() for item in values
+            ):
+                raise ValueError(
+                    f"candidate {field} must be an array of non-empty strings"
+                )
+
+
+def _validate_hot_sector_v2(metadata: dict[str, object]) -> None:
+    policy = _required_object(metadata, "source_concepts_policy")
+    expected = {
+        **_SOURCE_CONCEPTS_POLICY_CORE,
+        "canonical_sha256": SOURCE_CONCEPTS_POLICY_SHA256,
+    }
+    if policy != expected:
+        raise ValueError("hot-sector source_concepts_policy is not canonical")
+    canonical = json.dumps(
+        _SOURCE_CONCEPTS_POLICY_CORE,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()
+    if sha256(canonical).hexdigest() != SOURCE_CONCEPTS_POLICY_SHA256:
+        raise RuntimeError("source_concepts policy digest constant is inconsistent")
+    if _required_object(metadata, "model_identity") != _HOT_SECTOR_V2_MODEL_IDENTITY:
+        raise ValueError("hot-sector model_identity is not canonical")
 
 
 def _is_finite_number(value: object) -> TypeGuard[int | float]:
@@ -630,6 +712,9 @@ def _safe_features(row: dict[str, object]) -> dict[str, object]:
 __all__ = [
     "Candidate",
     "CandidateUniverse",
+    "HOT_SECTOR_INPUT_CONTRACTS",
+    "SOURCE_CONCEPTS_POLICY_SHA256",
+    "is_hot_sector_contract",
     "load_candidate_universe",
     "parse_date",
 ]

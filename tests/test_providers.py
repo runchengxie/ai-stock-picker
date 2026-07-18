@@ -10,10 +10,12 @@ from typing import Any, cast
 import pytest
 
 from stock_analysis.ai_lab.providers import (
+    OPENAI_RESPONSES_ENDPOINT,
     ProviderError,
     call_deepseek,
     call_deepseek_exchange,
     call_gemini,
+    call_openai_responses_exchange,
 )
 
 
@@ -35,6 +37,97 @@ def test_gemini_never_falls_back_to_other_provider_key(
     monkeypatch.setenv("DEEPSEEK_API_KEY", "must-not-be-used")
     with pytest.raises(ProviderError, match="GEMINI_API_KEY"):
         call_gemini("prompt")
+
+
+def test_openai_responses_uses_strict_schema_store_false_and_captures_audit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+    observed: list[tuple[str, dict[str, str], dict[str, object]]] = []
+    schema: dict[str, object] = {
+        "type": "object",
+        "additionalProperties": False,
+        "properties": {"picks": {"type": "array", "items": {"type": "object"}}},
+        "required": ["picks"],
+    }
+
+    def transport(request: urllib.request.Request, _timeout: float) -> bytes:
+        observed.append(
+            (
+                request.full_url,
+                dict(request.unredirected_hdrs),
+                json.loads(cast(Any, request.data)),
+            )
+        )
+        return json.dumps(
+            {
+                "model": "gpt-test-actual",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {"type": "output_text", "text": '{"picks":[]}'},
+                        ],
+                    }
+                ],
+                "usage": {"input_tokens": 12, "output_tokens": 4},
+            }
+        ).encode()
+
+    exchange = call_openai_responses_exchange(
+        "prompt",
+        response_schema=schema,
+        model="gpt-test",
+        transport=transport,
+    )
+
+    endpoint, headers, payload = observed[0]
+    assert endpoint == OPENAI_RESPONSES_ENDPOINT
+    assert headers["Authorization"] == "Bearer openai-secret"
+    assert payload["store"] is False
+    assert payload["text"] == {
+        "format": {
+            "type": "json_schema",
+            "name": "ai_stock_ranking",
+            "strict": True,
+            "schema": schema,
+        }
+    }
+    assert exchange.response_text == '{"picks":[]}'
+    assert exchange.actual_model == "gpt-test-actual"
+    assert exchange.usage == {"input_tokens": 12, "output_tokens": 4}
+    assert exchange.refusal is None
+    assert b"openai-secret" not in exchange.request_body
+
+
+def test_openai_responses_captures_refusal_without_treating_it_as_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "owner-key")
+    body = json.dumps(
+        {
+            "model": "gpt-test-actual",
+            "output": [
+                {
+                    "type": "message",
+                    "content": [{"type": "refusal", "refusal": "cannot comply"}],
+                }
+            ],
+            "usage": {"total_tokens": 3},
+        }
+    ).encode()
+
+    exchange = call_openai_responses_exchange(
+        "prompt",
+        response_schema={"type": "object"},
+        model="gpt-test",
+        transport=lambda _request, _timeout: body,
+    )
+
+    assert exchange.response_text is None
+    assert exchange.refusal == "cannot comply"
+    assert exchange.extraction_error == "provider_refusal"
+    assert exchange.usage == {"total_tokens": 3}
 
 
 def test_explicit_provider_key_does_not_fall_back_to_environment(
@@ -106,6 +199,7 @@ def test_deepseek_exchange_records_actual_model_and_preserves_invalid_raw_body(
         {
             "model": "deepseek-v3.1",
             "choices": [{"message": {"content": '{"picks":[]}'}}],
+            "usage": {"prompt_tokens": 3, "completion_tokens": 2},
         }
     ).encode()
 
@@ -116,6 +210,7 @@ def test_deepseek_exchange_records_actual_model_and_preserves_invalid_raw_body(
     assert complete.model == "deepseek-v4-flash"
     assert complete.actual_model == "deepseek-v3.1"
     assert complete.extraction_error is None
+    assert complete.usage == {"prompt_tokens": 3, "completion_tokens": 2}
 
     rejected = call_deepseek_exchange(
         "prompt",

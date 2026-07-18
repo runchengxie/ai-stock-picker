@@ -18,6 +18,7 @@ from stock_analysis.ai_lab.contracts import (
     SelectionArtifact,
     Style,
     contract_info,
+    contract_info_json_schema,
 )
 from stock_analysis.ai_lab.credentials import CredentialFileError
 from stock_analysis.ai_lab.evidence import (
@@ -38,6 +39,15 @@ from stock_analysis.ai_lab.selection import (
     validate_selection_artifact,
     write_selection,
     write_stability_selection,
+)
+from stock_analysis.ai_lab.shadow_campaign import (
+    ShadowModel,
+    finalize_shadow_day,
+    run_shadow_day,
+)
+from stock_analysis.ai_lab.shadow_validation import (
+    validate_shadow_campaign,
+    validate_shadow_day,
 )
 
 _CN_PROMPT_PROFILES = (
@@ -74,9 +84,14 @@ def _add_market_parser(
     prompt_profiles = _CN_PROMPT_PROFILES if market == "cn" else _US_PROMPT_PROFILES
     market_parser = markets.add_parser(market, help=label)
     commands = market_parser.add_subparsers(dest="command", metavar="COMMAND")
-    commands.add_parser(
+    contract = commands.add_parser(
         "contract-info",
         help="Print the versioned machine contract without calling a provider",
+    )
+    contract.add_argument(
+        "--json-schema",
+        action="store_true",
+        help="Print the JSON Schema of contract-info instead of the contract",
     )
     pick = commands.add_parser("pick", help="Rerank a candidate snapshot")
     pick.add_argument(
@@ -121,6 +136,15 @@ def _add_market_parser(
     _add_pick_plan_parser(
         commands, styles=styles, market=market, prompt_profiles=prompt_profiles
     )
+    _add_secondary_market_commands(commands, styles=styles, market=market)
+
+
+def _add_secondary_market_commands(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+    *,
+    styles: tuple[str, ...],
+    market: str,
+) -> None:
     validate = commands.add_parser(
         "validate",
         help=(
@@ -163,6 +187,48 @@ def _add_market_parser(
     trial.add_argument("--evidence-dir")
     trial.add_argument("--timeout", type=float, default=120.0)
     trial.add_argument("--credential-file")
+    if market == "cn":
+        _add_shadow_run_parser(commands, "shadow-day", watchdog=False)
+        _add_shadow_run_parser(commands, "shadow-watchdog", watchdog=True)
+        shadow_day = commands.add_parser(
+            "validate-shadow-day",
+            help="Validate one append-only v2 shadow model/date partition",
+        )
+        shadow_day.add_argument("--day-dir", required=True)
+        shadow_campaign = commands.add_parser(
+            "validate-shadow-campaign",
+            help="Validate every model/date partition in one shadow campaign",
+        )
+        shadow_campaign.add_argument("--campaign-root", required=True)
+
+
+def _add_shadow_run_parser(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+    name: str,
+    *,
+    watchdog: bool,
+) -> None:
+    parser = commands.add_parser(
+        name,
+        help=(
+            "Terminalize missing v2 shadow repetitions without network calls"
+            if watchdog
+            else "Run one post-close three-repetition v2 shadow model/date"
+        ),
+    )
+    parser.add_argument("--plan", required=True, help="Frozen bounded v2 plan.json")
+    parser.add_argument("--campaign-id", required=True)
+    parser.add_argument("--signal-date", required=True)
+    parser.add_argument("--output-root", required=True)
+    parser.add_argument("--provider", choices=("deepseek", "openai"), required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--max-output-tokens", type=int, default=8192)
+    parser.add_argument(
+        "--thinking", choices=("enabled", "disabled"), default="disabled"
+    )
+    parser.add_argument("--reasoning-effort", choices=("high", "max"))
+    if not watchdog:
+        parser.add_argument("--timeout", type=float, default=120.0)
 
 
 def _add_deepseek_inference_arguments(parser: argparse.ArgumentParser) -> None:
@@ -215,10 +281,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         "contract-info",
         "pick",
         "pick-plan",
+        "shadow-day",
+        "shadow-watchdog",
         "stability-plan",
         "trial",
         "validate",
         "validate-evidence",
+        "validate-shadow-campaign",
+        "validate-shadow-day",
     }:
         parser.parse_args([args.market, "--help"])
         return 0
@@ -226,8 +296,33 @@ def main(argv: Sequence[str] | None = None) -> int:
     market = cast(Market, args.market.upper())
     try:
         if args.command == "contract-info":
-            print(json.dumps(contract_info(market), ensure_ascii=False, sort_keys=True))
+            payload = (
+                contract_info_json_schema()
+                if args.json_schema
+                else contract_info(market)
+            )
+            print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
             return 0
+        if args.command == "validate-shadow-day":
+            print(
+                json.dumps(
+                    validate_shadow_day(args.day_dir),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command == "validate-shadow-campaign":
+            print(
+                json.dumps(
+                    validate_shadow_campaign(args.campaign_root),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                )
+            )
+            return 0
+        if args.command in {"shadow-day", "shadow-watchdog"}:
+            return _shadow_run_command(args, market)
         if args.command == "validate":
             return _validate_selection_command(args, market)
         if args.command == "validate-evidence":
@@ -295,6 +390,52 @@ def _build_cli_plan(args: argparse.Namespace, market: Market) -> SelectionPlan:
         name_aliases=name_aliases,
         prompt_profile=getattr(args, "prompt_profile", "production_v4"),
     )
+
+
+def _shadow_run_command(args: argparse.Namespace, market: Market) -> int:
+    if market != "CN":
+        raise ValueError("v2 shadow campaigns are CN research-only")
+    plan = load_trial_plan(args.plan)
+    if plan.market != market:
+        raise ValueError("shadow plan market does not match CLI market")
+    shadow_model = ShadowModel(
+        provider=args.provider,
+        model=args.model,
+        max_output_tokens=args.max_output_tokens,
+        thinking=args.thinking,
+        reasoning_effort=args.reasoning_effort,
+    )
+    signal_date = parse_date(args.signal_date)
+    result = (
+        finalize_shadow_day(
+            plan,
+            args.output_root,
+            campaign_id=args.campaign_id,
+            signal_date=signal_date,
+            shadow_model=shadow_model,
+        )
+        if args.command == "shadow-watchdog"
+        else run_shadow_day(
+            plan,
+            args.output_root,
+            campaign_id=args.campaign_id,
+            signal_date=signal_date,
+            shadow_model=shadow_model,
+            timeout=args.timeout,
+        )
+    )
+    print(
+        json.dumps(
+            {
+                "day_root": str(result.day_root),
+                "repetition_statuses": list(result.repetition_statuses),
+                "consensus_status": result.consensus_status,
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    )
+    return 0
 
 
 def _dry_run_payload(

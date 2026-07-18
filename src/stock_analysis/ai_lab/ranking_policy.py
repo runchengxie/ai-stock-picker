@@ -6,7 +6,7 @@ import math
 from collections.abc import Sequence
 from hashlib import sha256
 
-from .candidates import Candidate, CandidateUniverse
+from .candidates import Candidate, CandidateUniverse, is_hot_sector_contract
 from .ranking_policy_contract import (
     BOUNDED_RANKING_POLICY,
     BOUNDED_RANKING_PROFILE,
@@ -31,7 +31,7 @@ def numeric_ranking_method(universe: CandidateUniverse) -> str:
 
     return (
         "relevance_desc_score_desc_symbol_asc"
-        if universe.input_contract == "hot_sector_candidate_universe_v1"
+        if is_hot_sector_contract(universe.input_contract)
         else "score_desc_symbol_asc"
     )
 
@@ -39,7 +39,7 @@ def numeric_ranking_method(universe: CandidateUniverse) -> str:
 def numeric_ranked_candidates(universe: CandidateUniverse) -> tuple[Candidate, ...]:
     """Build the deterministic baseline used by plans, evidence, and policy."""
 
-    if universe.input_contract == "hot_sector_candidate_universe_v1":
+    if is_hot_sector_contract(universe.input_contract):
         relevance = {
             candidate.symbol: hot_sector_relevance(candidate)
             for candidate in universe.candidates

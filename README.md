@@ -4,8 +4,9 @@
 
 当前支持：
 
-- A 股使用 DeepSeek
+- A 股正式选择使用 DeepSeek
 - 美股使用 Gemini
+- A 股 `bounded_ranking_v2` 研究 shadow 可使用 DeepSeek 或 OpenAI Responses API
 
 模型只能从候选池中选择股票。股票代码、名称和主题均以输入数据为准。
 
@@ -85,6 +86,48 @@ uv run aipick cn pick \
 覆盖已经冻结的模型或推理参数。匿名对照可以同时传入完整的股票代码映射和名称映射，
 冻结后的完整 Prompt 不得出现真实代码或名称。完整示例见
 [证据归档与稳定性试验](docs/evidence-and-stability.md)。
+
+## bounded v2 shadow
+
+`shadow-day` 读取冻结的 `bounded_ranking_v2 / 2026-07-17.7` 计划，在收盘后对一个
+provider/model 固定执行三次。至少两次通过排序合同才生成共识；每次 repetition 以及
+consensus 都先在隔离 staging 完整落盘，再原子发布为 complete 或 tombstone 终态；已有
+目录不会覆盖。artifact 内嵌相对路径 candidate snapshot，不复制原始绝对路径。OpenAI
+路径只读取 `OPENAI_API_KEY`，使用 Responses API Structured Outputs，并固定
+`store=false`。
+
+```bash
+export OPENAI_API_KEY='你的密钥'
+uv run aipick cn shadow-day \
+  --plan /absolute/path/frozen/plan.json \
+  --campaign-id bounded-v2-shadow \
+  --signal-date 2026-07-17 \
+  --output-root /absolute/path/shadow \
+  --provider openai \
+  --model gpt-model-snapshot
+```
+
+进程中断导致 repetition 缺失时，使用无网络 watchdog 将缺失单元写为 tombstone：
+
+```bash
+uv run aipick cn shadow-watchdog \
+  --plan /absolute/path/frozen/plan.json \
+  --campaign-id bounded-v2-shadow \
+  --signal-date 2026-07-17 \
+  --output-root /absolute/path/shadow \
+  --provider openai \
+  --model gpt-model-snapshot
+```
+
+下游不需要复制 owner schema。使用 `contract-info` 获取带摘要的机器合同，并通过 owner
+CLI 离线校验 artifact：
+
+```bash
+uv run aipick cn contract-info
+uv run aipick cn contract-info --json-schema
+uv run aipick cn validate-shadow-day --day-dir /absolute/path/shadow/day
+uv run aipick cn validate-shadow-campaign --campaign-root /absolute/path/shadow/campaign
+```
 
 美股命令只读取 `GEMINI_API_KEY`：
 

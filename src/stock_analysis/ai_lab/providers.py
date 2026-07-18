@@ -53,6 +53,15 @@ class ProviderExchange:
     actual_model: str | None
     extraction_error: str | None
     timeout_seconds: float
+    refusal: str | None = None
+    usage: dict[str, object] | None = None
+
+
+OPENAI_RESPONSES_ENDPOINT = "https://api.openai.com/v1/responses"
+OPENAI_SYSTEM_MESSAGE = (
+    "You rerank only the supplied candidate universe. "
+    "Return only the JSON object required by the supplied schema."
+)
 
 
 def call_deepseek(
@@ -128,17 +137,9 @@ def call_deepseek_exchange(
         transport=transport,
     )
     _reject_credential_echo(response_body, credential)
-    body, decode_error = _decode_object(response_body)
-    actual_model = _optional_string(body.get("model")) if body is not None else None
-    response_text: str | None = None
-    extraction_error = decode_error
-    if body is not None:
-        try:
-            choices = _list_field(body, "choices")
-            message = _dict_field(_dict_item(choices, 0), "message")
-            response_text = _nonempty_string(message.get("content"), "DeepSeek content")
-        except (IndexError, TypeError, ValueError):
-            extraction_error = "provider_response_schema_invalid"
+    response_text, actual_model, extraction_error, refusal, usage = (
+        inspect_deepseek_response(response_body)
+    )
     return ProviderExchange(
         provider="deepseek",
         model=model,
@@ -154,6 +155,8 @@ def call_deepseek_exchange(
         actual_model=actual_model,
         extraction_error=extraction_error,
         timeout_seconds=timeout,
+        refusal=refusal,
+        usage=usage,
     )
 
 
@@ -303,6 +306,157 @@ def call_gemini_exchange(
     )
 
 
+def call_openai_responses_exchange(
+    prompt: str,
+    *,
+    response_schema: dict[str, object],
+    model: str,
+    max_output_tokens: int = 8_192,
+    timeout: float = 120,
+    transport: Transport | None = None,
+    api_key: str | None = None,
+) -> ProviderExchange:
+    """Call OpenAI Responses with strict Structured Outputs for research shadow."""
+
+    credential = _resolve_api_key(api_key, "OPENAI_API_KEY", "research shadow")
+    _validate_model(model)
+    _validate_request(prompt, timeout)
+    if isinstance(max_output_tokens, bool) or not isinstance(max_output_tokens, int):
+        raise ProviderError("max_output_tokens must be an integer")
+    if not 1 <= max_output_tokens <= 65_536:
+        raise ProviderError("max_output_tokens must be between 1 and 65536")
+    if not isinstance(response_schema, dict) or not response_schema:
+        raise ProviderError("response_schema must be a non-empty JSON Schema object")
+    payload: dict[str, object] = {
+        "model": model,
+        "instructions": OPENAI_SYSTEM_MESSAGE,
+        "input": prompt,
+        "store": False,
+        "max_output_tokens": max_output_tokens,
+        "text": {
+            "format": {
+                "type": "json_schema",
+                "name": "ai_stock_ranking",
+                "strict": True,
+                "schema": response_schema,
+            }
+        },
+    }
+    request_body, response_body = _post_raw(
+        OPENAI_RESPONSES_ENDPOINT,
+        payload,
+        credential_headers={"Authorization": f"Bearer {credential}"},
+        timeout=timeout,
+        transport=transport,
+    )
+    _reject_credential_echo(response_body, credential)
+    response_text, actual_model, extraction_error, refusal, usage = (
+        inspect_openai_response(response_body)
+    )
+    return ProviderExchange(
+        provider="openai",
+        model=model,
+        endpoint=OPENAI_RESPONSES_ENDPOINT,
+        request_method="POST",
+        request_headers=(
+            ("Content-Type", "application/json"),
+            ("Authorization", "<redacted>"),
+        ),
+        request_body=request_body,
+        response_body=response_body,
+        response_text=response_text,
+        actual_model=actual_model,
+        extraction_error=extraction_error,
+        timeout_seconds=timeout,
+        refusal=refusal,
+        usage=usage,
+    )
+
+
+def inspect_deepseek_response(
+    response_body: bytes,
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    dict[str, object] | None,
+]:
+    """Extract the exact DeepSeek response fields committed to evidence."""
+
+    body, decode_error = _decode_object(response_body)
+    if body is None:
+        return None, None, decode_error, None, None
+    actual_model = _optional_string(body.get("model"))
+    usage = _optional_object(body.get("usage"))
+    try:
+        choices = _list_field(body, "choices")
+        message = _dict_field(_dict_item(choices, 0), "message")
+        response_text = _nonempty_string(message.get("content"), "DeepSeek content")
+    except (IndexError, TypeError, ValueError):
+        return None, actual_model, "provider_response_schema_invalid", None, usage
+    return response_text, actual_model, None, None, usage
+
+
+def inspect_openai_response(
+    response_body: bytes,
+) -> tuple[
+    str | None,
+    str | None,
+    str | None,
+    str | None,
+    dict[str, object] | None,
+]:
+    """Extract the exact OpenAI Responses fields committed to evidence."""
+
+    body, decode_error = _decode_object(response_body)
+    if body is None:
+        return None, None, decode_error, None, None
+    actual_model = _optional_string(body.get("model"))
+    usage = _optional_object(body.get("usage"))
+    response_text, refusal, extraction_error = _openai_response_content(body)
+    return response_text, actual_model, extraction_error, refusal, usage
+
+
+def _openai_response_content(
+    body: dict[str, object],
+) -> tuple[str | None, str | None, str | None]:
+    try:
+        output = _list_field(body, "output")
+        content_items: list[dict[str, object]] = []
+        for output_item in output:
+            if (
+                not isinstance(output_item, dict)
+                or output_item.get("type") != "message"
+            ):
+                continue
+            content = _list_field(cast(dict[str, object], output_item), "content")
+            content_items.extend(
+                cast(dict[str, object], item)
+                for item in content
+                if isinstance(item, dict)
+            )
+    except (TypeError, ValueError):
+        return None, None, "provider_response_schema_invalid"
+    refusals = [
+        _optional_string(item.get("refusal"))
+        for item in content_items
+        if item.get("type") == "refusal"
+    ]
+    refusal = next((value for value in refusals if value is not None), None)
+    if refusal is not None:
+        return None, refusal[:2000], "provider_refusal"
+    texts = [
+        _optional_string(item.get("text"))
+        for item in content_items
+        if item.get("type") == "output_text"
+    ]
+    extracted = [value for value in texts if value is not None]
+    if len(extracted) != 1:
+        return None, None, "provider_response_schema_invalid"
+    return extracted[0], None, None
+
+
 def _post_raw(
     url: str,
     payload: dict[str, object],
@@ -383,6 +537,10 @@ def _optional_string(value: object) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def _optional_object(value: object) -> dict[str, object] | None:
+    return cast(dict[str, object], value) if isinstance(value, dict) else None
+
+
 def _list_field(payload: dict[str, object], field: str) -> list[object]:
     value = payload.get(field)
     if not isinstance(value, list):
@@ -418,4 +576,9 @@ __all__ = [
     "call_deepseek_exchange",
     "call_gemini",
     "call_gemini_exchange",
+    "call_openai_responses_exchange",
+    "inspect_deepseek_response",
+    "inspect_openai_response",
+    "OPENAI_RESPONSES_ENDPOINT",
+    "OPENAI_SYSTEM_MESSAGE",
 ]

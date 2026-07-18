@@ -24,7 +24,8 @@ aipick cn trial
 
 1. 模型只能选择候选池中的股票。
 2. 股票名称和主题只能从候选池回填。
-3. A 股只能使用 `DEEPSEEK_API_KEY`。
+3. A 股正式选择只能使用 `DEEPSEEK_API_KEY`；冻结的 bounded v2 研究 shadow 可以隔离使用
+   `OPENAI_API_KEY`，但不能生成正式发布选择。
 4. 美股只能使用 `GEMINI_API_KEY`。
 5. provider 凭据不能进入 URL。
 6. provider 凭据不能随重定向转发。
@@ -81,6 +82,9 @@ src/stock_analysis/
     ├── prompting.py
     ├── providers.py
     ├── request_validation.py
+    ├── shadow_campaign.py
+    ├── shadow_exchange_validation.py
+    ├── shadow_validation.py
     ├── stability_support.py
     └── selection.py
 
@@ -107,6 +111,9 @@ docs/
 - `prompting.py` 隔离 production v4 与 legacy v3 的 Prompt 渲染
 - `providers.py` 调用 DeepSeek 与 Gemini，并保留可审计的响应信息
 - `request_validation.py` 复验归档请求的完整消息和 provider 参数
+- `shadow_campaign.py` 执行 append-only rep3/min2 shadow 与确定性共识
+- `shadow_exchange_validation.py` 复验 shadow 请求和原始响应的语义一致性
+- `shadow_validation.py` 离线复验 shadow bundle、campaign pin 和逐文件摘要
 - `stability_support.py` 生成和校验匿名身份映射
 - `selection.py` 构建选择计划、校验结果并按用途写入文件
 - `app/cli.py` 处理命令行参数和错误输出

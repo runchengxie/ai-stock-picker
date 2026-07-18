@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from stock_analysis.ai_lab.contracts import canonical_contract_sha256
 from stock_analysis.ai_lab.evidence import validate_selection_evidence
 from stock_analysis.ai_lab.evidence_consistency import provider_parameters
 from stock_analysis.ai_lab.frozen_plan import write_pick_plan
@@ -67,40 +68,54 @@ def test_contract_info_is_network_free_and_machine_readable(
     assert main(["cn", "contract-info"]) == 0
 
     payload = json.loads(capsys.readouterr().out)
-    assert payload == {
-        "artifact_type": "ai_stock_picker_contract_info",
-        "market": "CN",
-        "prompt_profiles": {
-            "bounded_ranking_v1": {
-                "output_contract": "research_selection_or_ranking_diagnostic",
-                "prompt_version": "2026-07-17.2",
-                "ranking_policy": BOUNDED_RANKING_POLICY.contract_record(),
-            },
-            "bounded_ranking_v2": {
-                "output_contract": "research_selection_or_ranking_diagnostic",
-                "prompt_version": "2026-07-17.7",
-                "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
-            },
-            "legacy_stability_v3": {
-                "output_contract": "legacy_stability_selection",
-                "prompt_version": "2026-07-15.3",
-            },
-            "production_v4": {
-                "output_contract": "publication_selection",
-                "prompt_version": "2026-07-17.6",
-            },
-            "ranking_only_v1": {
-                "output_contract": "research_selection_or_ranking_diagnostic",
-                "prompt_version": "2026-07-17.1",
-            },
-        },
-        "provider": "deepseek",
+    assert payload["artifact_type"] == "ai_stock_picker_contract_info"
+    assert payload["market"] == "CN"
+    assert payload["provider"] == "deepseek"
+    assert payload["schema_version"] == "1.1.0"
+    assert payload["selection_contract"] == {
+        "artifact_type": "ai_stock_selection",
         "schema_version": "1.0.0",
-        "selection_contract": {
-            "artifact_type": "ai_stock_selection",
-            "schema_version": "1.0.0",
+    }
+    assert payload["prompt_profiles"] == {
+        "bounded_ranking_v1": {
+            "output_contract": "research_selection_or_ranking_diagnostic",
+            "prompt_version": "2026-07-17.2",
+            "ranking_policy": BOUNDED_RANKING_POLICY.contract_record(),
+        },
+        "bounded_ranking_v2": {
+            "output_contract": "research_selection_or_ranking_diagnostic",
+            "prompt_version": "2026-07-17.7",
+            "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
+        },
+        "legacy_stability_v3": {
+            "output_contract": "legacy_stability_selection",
+            "prompt_version": "2026-07-15.3",
+        },
+        "production_v4": {
+            "output_contract": "publication_selection",
+            "prompt_version": "2026-07-17.6",
+        },
+        "ranking_only_v1": {
+            "output_contract": "research_selection_or_ranking_diagnostic",
+            "prompt_version": "2026-07-17.1",
         },
     }
+    assert payload["shadow_campaign_contract"]["repetitions"] == 3
+    assert payload["shadow_campaign_contract"]["min_valid_repetitions"] == 2
+    assert payload["accepted_candidate_contracts"]["hot_sector_candidate_universe_v2"][
+        "source_concepts_policy_sha256"
+    ].startswith("d14282e8")
+    assert payload["model_response_contracts"]["ranking_selection"]["sha256"]
+    assert payload["contract_sha256"] == canonical_contract_sha256(payload)
+
+
+def test_contract_info_exposes_its_json_schema(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    assert main(["cn", "contract-info", "--json-schema"]) == 0
+    schema = json.loads(capsys.readouterr().out)
+    assert schema["title"] == "ContractInfoArtifact"
+    assert schema["properties"]["contract_sha256"]["type"] == "string"
 
 
 def test_us_contract_and_cli_do_not_advertise_cn_bounded_profile(

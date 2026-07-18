@@ -13,6 +13,7 @@ from typing import TypedDict, cast
 
 from .alias_contracts import alias_maps_sha256
 from .bundle_paths import safe_bundle_path
+from .candidates import is_hot_sector_contract
 from .contracts import Market, SelectionArtifact, Style
 from .evidence_contracts import selection_contracts
 from .providers import (
@@ -397,7 +398,7 @@ def numeric_ranking_bytes(plan: SelectionPlan) -> bytes:
         candidate.symbol: index
         for index, candidate in enumerate(plan.universe.candidates, start=1)
     }
-    hot_sector = plan.universe.input_contract == "hot_sector_candidate_universe_v1"
+    hot_sector = is_hot_sector_contract(plan.universe.input_contract)
     relevance_by_symbol = (
         {
             candidate.symbol: hot_sector_relevance(candidate)

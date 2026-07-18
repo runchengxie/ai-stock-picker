@@ -56,6 +56,34 @@ uv run aipick cn validate-evidence \
 
 目录缺少清单、文件哈希不符或出现未登记文件时，校验会失败。
 
+## bounded v2 append-only shadow
+
+单日 shadow 只接受冻结的 `bounded_ranking_v2 / 2026-07-17.7` plan，并要求上海市场
+信号日 16:00 之后启动。每个模型固定三次 repetition，目录为：
+
+```text
+campaign/provider--model/YYYY-MM-DD/repetition-01
+campaign/provider--model/YYYY-MM-DD/repetition-02
+campaign/provider--model/YYYY-MM-DD/repetition-03
+campaign/provider--model/YYYY-MM-DD/consensus
+```
+
+排序合同通过即可成为 complete repetition；发布文案失败仍保留 hash-indexed
+`ranking.json` 并参与共识。排序失败、拒答或调用失败写 tombstone。共识至少需要两次有效
+结果，固定 Numeric Top7，仅对三个边界名称按票数、Borda 积分、中位顺序、symbol 依次
+破同分。有效次数不足时 consensus 写 tombstone，校验输出同时给出冻结 Numeric Top10
+fallback，但不会把失败日期从样本中删除。
+
+每个终态 bundle 先写入 output root 下的隔离 staging，文件和目录 fsync 后再原子 rename
+到最终分区。发布前中断只会留下不参与 campaign 校验的 staging 残片，watchdog 仍可对
+缺失 repetition 写 tombstone。归档使用相对 `candidate_snapshot_path` 和内容摘要，不重复
+记录原机器的绝对 candidate 路径。campaign validator 会固定同一模型跨日的模型参数、
+style、top_n、Prompt 版本和输入合同，并要求同一交易日各模型读取同一冻结输入。
+
+OpenAI adapter 使用 Responses API 的 `text.format` strict JSON Schema、`store=false`，
+并保存请求模型、响应实际模型、refusal、usage 和原始响应。当前 runner 不包含进程调度、
+交易所日历或 outcome maturer；这些由外部 control plane 安排。
+
 ## 冻结 production 选择计划
 
 `pick-plan` 可以为批量回放冻结单次 production v4 请求。它不读取凭据，也不调用模型。
