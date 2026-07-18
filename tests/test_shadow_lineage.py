@@ -5,6 +5,7 @@ from datetime import date, datetime, timezone
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import pytest
 from conftest import write_manifest
@@ -134,18 +135,21 @@ def _lineage(tmp_path: Path, plan: Any) -> tuple[Path, Path]:
 def _run_bound(tmp_path: Path) -> tuple[Any, Any, Path, Path]:
     plan = _frozen_plan(tmp_path)
     decision_path, receipt_path = _lineage(tmp_path, plan)
-    result = run_shadow_day(
-        plan,
-        tmp_path / "shadow",
-        campaign_id="prompt-8-prospective",
-        signal_date=_SIGNAL_DATE,
-        decision_plan=decision_path,
-        launch_receipt=receipt_path,
-        generated_at=_AFTER_CLOSE,
-        caller=lambda owner_plan, receipt_model, _repetition, _timeout: _exchange(
+    with patch(
+        "stock_analysis.ai_lab.shadow_campaign.call_shadow_provider",
+        side_effect=lambda owner_plan, receipt_model, _repetition, _timeout: _exchange(
             owner_plan, receipt_model
         ),
-    )
+    ):
+        result = run_shadow_day(
+            plan,
+            tmp_path / "shadow",
+            campaign_id="prompt-8-prospective",
+            signal_date=_SIGNAL_DATE,
+            decision_plan=decision_path,
+            launch_receipt=receipt_path,
+            generated_at=_AFTER_CLOSE,
+        )
     return plan, result, decision_path, receipt_path
 
 
@@ -209,10 +213,13 @@ def test_runtime_provider_and_model_must_match_receipt(
     plan = _frozen_plan(tmp_path)
     decision_path, receipt_path = _lineage(tmp_path, plan)
 
-    def unexpected(*_args: object) -> ProviderExchange:
-        raise AssertionError("provider must not be called")
-
-    with pytest.raises(ValueError, match=message):
+    with (
+        patch(
+            "stock_analysis.ai_lab.shadow_campaign.call_shadow_provider",
+            side_effect=AssertionError("provider must not be called"),
+        ),
+        pytest.raises(ValueError, match=message),
+    ):
         run_shadow_day(
             plan,
             tmp_path / "shadow",
@@ -222,7 +229,6 @@ def test_runtime_provider_and_model_must_match_receipt(
             decision_plan=decision_path,
             launch_receipt=receipt_path,
             generated_at=_AFTER_CLOSE,
-            caller=unexpected,
         )
     assert not (tmp_path / "shadow").exists()
 
@@ -259,6 +265,27 @@ def test_missing_receipt_fails_closed_but_injected_cosplay_is_legacy_unbound(
     assert summary["evidence_status"] == "legacy_unbound"
     assert summary["decision_plan_sha256"] is None
     assert summary["launch_receipt_sha256"] is None
+
+
+def test_injected_caller_cannot_claim_bound_launch_lineage(tmp_path: Path) -> None:
+    plan = _frozen_plan(tmp_path)
+    decision_path, receipt_path = _lineage(tmp_path, plan)
+    model = ShadowModel(provider="openai", model="gpt-test")
+
+    with pytest.raises(ValueError, match="cannot create prospective_bound"):
+        run_shadow_day(
+            plan,
+            tmp_path / "shadow",
+            campaign_id="prompt-8-prospective",
+            signal_date=_SIGNAL_DATE,
+            shadow_model=model,
+            decision_plan=decision_path,
+            launch_receipt=receipt_path,
+            generated_at=_AFTER_CLOSE,
+            caller=lambda owner_plan, owner_model, _repetition, _timeout: _exchange(
+                owner_plan, owner_model
+            ),
+        )
 
 
 def test_existing_schema_11_cosplay_without_lineage_fields_is_legacy_unbound(
@@ -332,8 +359,5 @@ def test_lineage_and_day_artifacts_are_append_only(tmp_path: Path) -> None:
             decision_plan=tmp_path / "decision" / "decision-plan.json",
             launch_receipt=tmp_path / "receipt" / "launch-receipt.json",
             generated_at=_AFTER_CLOSE,
-            caller=lambda owner_plan, owner_model, _repetition, _timeout: _exchange(
-                owner_plan, owner_model
-            ),
         )
     assert result.day_root.is_dir()

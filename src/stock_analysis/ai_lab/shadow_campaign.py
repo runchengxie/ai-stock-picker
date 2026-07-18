@@ -98,7 +98,8 @@ def run_shadow_day(
     caller: ShadowCaller | None = None,
 ) -> ShadowDayResult:
     """Execute exactly three repetitions and terminalize every expected unit."""
-
+    if caller is not None and (decision_plan is not None or launch_receipt is not None):
+        raise ValueError("injected callers cannot create prospective_bound evidence")
     shadow_model, launch_binding = resolve_shadow_launch_binding(
         plan,
         campaign_id=campaign_id,
