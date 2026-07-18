@@ -6,7 +6,7 @@
 
 - A 股正式选择使用 DeepSeek
 - 美股使用 Gemini
-- A 股 `bounded_ranking_v2` 研究 shadow 可使用 DeepSeek 或 OpenAI Responses API
+- A 股 `.8` bounded/risk-veto prospective shadow 使用 decision plan + launch receipt
 
 模型只能从候选池中选择股票。股票代码、名称和主题均以输入数据为准。
 
@@ -87,40 +87,62 @@ uv run aipick cn pick \
 冻结后的完整 Prompt 不得出现真实代码或名称。完整示例见
 [证据归档与稳定性试验](docs/evidence-and-stability.md)。
 
-## bounded v2 shadow
+## `.8` 三臂研究 shadow owner
 
-`shadow-day` 读取冻结的 `bounded_ranking_v2 / 2026-07-17.7` 计划，在收盘后对一个
-provider/model 固定执行三次。至少两次通过排序合同才生成共识；每次 repetition 以及
+`.8` 已实现 `bounded_ranking_v3 / 2026-07-18.8` 与
+`risk_veto_v1 / 2026-07-18.8` 的严格解析、三次重复、真多数共识和 tombstone。
+bounded arm 只有在最终三只边界股票各获得至少两票时才 complete；risk-veto arm 要求
+完全相同的 `veto_symbol/risk_code` 至少两票，替补只能由 Numeric 顺序确定。每次 repetition 以及
 consensus 都先在隔离 staging 完整落盘，再原子发布为 complete 或 tombstone 终态；已有
-目录不会覆盖。artifact 内嵌相对路径 candidate snapshot，不复制原始绝对路径。OpenAI
-路径只读取 `OPENAI_API_KEY`，使用 Responses API Structured Outputs，并固定
-`store=false`。
+目录不会覆盖。artifact 内嵌相对路径 candidate snapshot，不复制原始绝对路径。
+
+正式 `.8` 路径使用两个不可变工件解除旧 `ai_pick_plan` 的 DeepSeek 身份绑定：
+`ai_shadow_decision_plan` 只冻结 campaign/date/arm、Prompt、候选和 Numeric 证据；
+`ai_shadow_launch_receipt` 再冻结 provider、model 和完整推理参数。二者使用规范化 JSON 内容
+哈希，receipt 绑定 decision digest，runner 只能由 receipt 构造 model partition：
 
 ```bash
-export OPENAI_API_KEY='你的密钥'
+uv run aipick cn shadow-decision-plan \
+  --plan /absolute/path/frozen/plan.json \
+  --campaign-id prompt-8-prospective \
+  --signal-date 2026-07-18 \
+  --output-dir /absolute/path/lineage/decision
+
+uv run aipick cn shadow-launch-receipt \
+  --decision-plan /absolute/path/lineage/decision/decision-plan.json \
+  --provider openai \
+  --model gpt-model-snapshot \
+  --output-dir /absolute/path/lineage/openai-receipt
+
 uv run aipick cn shadow-day \
   --plan /absolute/path/frozen/plan.json \
-  --campaign-id bounded-v2-shadow \
-  --signal-date 2026-07-17 \
-  --output-root /absolute/path/shadow \
-  --provider openai \
-  --model gpt-model-snapshot
+  --decision-plan /absolute/path/lineage/decision/decision-plan.json \
+  --launch-receipt /absolute/path/lineage/openai-receipt/launch-receipt.json \
+  --campaign-id prompt-8-prospective \
+  --signal-date 2026-07-18 \
+  --output-root /absolute/path/shadow
 ```
 
-进程中断导致 repetition 缺失时，使用无网络 watchdog 将缺失单元写为 tombstone：
+缺少任一工件时，标准 `.8 shadow-day` 在调用 provider 前 fail closed。显式注入 caller 的
+旧 cosplay 仍可重放，但 manifest/validator 只能标记为 `legacy_unbound`，不会冒充
+`prospective_bound`。
+
+历史 `.7` 进程中断导致 repetition 缺失时，可使用无网络 watchdog 将缺失单元写为 tombstone：
 
 ```bash
 uv run aipick cn shadow-watchdog \
   --plan /absolute/path/frozen/plan.json \
-  --campaign-id bounded-v2-shadow \
+  --campaign-id legacy-bounded-v2 \
   --signal-date 2026-07-17 \
   --output-root /absolute/path/shadow \
-  --provider openai \
-  --model gpt-model-snapshot
+  --provider deepseek \
+  --model deepseek-v4-flash
 ```
 
 下游不需要复制 owner schema。使用 `contract-info` 获取带摘要的机器合同，并通过 owner
-CLI 离线校验 artifact：
+CLI 离线校验 artifact。日级 validator 同时返回已验证的 `plan_sha256`、
+`decision_plan_sha256`、`launch_receipt_sha256`、`evidence_status`、
+`numeric_ranking_sha256` 和 candidate 哈希，供下游绑定完整 lineage：
 
 ```bash
 uv run aipick cn contract-info
@@ -128,6 +150,9 @@ uv run aipick cn contract-info --json-schema
 uv run aipick cn validate-shadow-day --day-dir /absolute/path/shadow/day
 uv run aipick cn validate-shadow-campaign --campaign-root /absolute/path/shadow/campaign
 ```
+
+新目录为 `campaign/arm/provider--model/date/repetition`。冻结的 `.7` 计划、旧目录和旧
+Borda 共识仍按原合同只读重建与校验，不会被 `.8` 覆盖。
 
 美股命令只读取 `GEMINI_API_KEY`：
 

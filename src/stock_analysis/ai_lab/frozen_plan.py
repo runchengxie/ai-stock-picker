@@ -45,6 +45,8 @@ def write_pick_plan(
         "ranking_only_v1",
         "bounded_ranking_v1",
         "bounded_ranking_v2",
+        "bounded_ranking_v3",
+        "risk_veto_v1",
     }:
         raise ValueError("pick-plan requires a current production or research profile")
     if plan.provider_parameter_schema != "explicit_v2":
@@ -75,7 +77,7 @@ def write_pick_plan(
         "provider_parameters": provider_parameters(plan),
         "prompt_version": plan.prompt_version,
         "prompt_profile": plan.prompt_profile,
-        **plan.ranking_policy_fields,
+        **plan.decision_policy_fields,
         "selection_as_of": plan.universe.selection_as_of.isoformat(),
         "style": plan.style,
         "top_n": plan.top_n,
@@ -205,6 +207,12 @@ def _validate_rebuilt_plan(
         raise ValueError("pick plan ranking_policy is inconsistent")
     if plan.ranking_policy is None and "ranking_policy" in payload:
         raise ValueError("unbounded pick plan must not declare a ranking policy")
+    if payload.get("risk_veto_policy") != plan.decision_policy_fields.get(
+        "risk_veto_policy"
+    ):
+        raise ValueError("pick plan risk_veto_policy is inconsistent")
+    if plan.risk_veto_policy is None and "risk_veto_policy" in payload:
+        raise ValueError("non-veto pick plan must not declare a risk-veto policy")
     prompt = _indexed_path(root, payload, "prompt_path").read_bytes()
     if prompt != plan.prompt.encode() or payload.get("prompt_sha256") != _digest(
         prompt

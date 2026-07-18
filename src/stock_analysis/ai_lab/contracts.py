@@ -16,17 +16,22 @@ from .ranking_policy_contract import (
     BOUNDED_RANKING_PROMPT_VERSION,
     BOUNDED_RANKING_V2_POLICY,
     BOUNDED_RANKING_V2_PROMPT_VERSION,
+    BOUNDED_RANKING_V3_POLICY,
+    BOUNDED_RANKING_V3_PROMPT_VERSION,
+    RISK_VETO_POLICY,
+    RISK_VETO_PROMPT_VERSION,
 )
 
 SCHEMA_VERSION = "1.0.0"
-CONTRACT_INFO_SCHEMA_VERSION = "1.1.0"
+CONTRACT_INFO_SCHEMA_VERSION = "1.2.0"
 CONTRACT_INFO_ARTIFACT_TYPE = "ai_stock_picker_contract_info"
 HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID = "hotsector.source_concepts.theme_only"
 HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION = "1.0.0"
 HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256 = (
     "d14282e8047367ba61ea762cd3c3de56162329c12f1778c9681246ec7f0f0b40"
 )
-SHADOW_CAMPAIGN_SCHEMA_VERSION = "1.0.0"
+LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION = "1.0.0"
+SHADOW_CAMPAIGN_SCHEMA_VERSION = "1.1.0"
 SHADOW_REPETITIONS = 3
 SHADOW_MIN_VALID_REPETITIONS = 2
 SHADOW_REPETITION_NAMES = tuple(
@@ -37,8 +42,10 @@ SHADOW_TOMBSTONE_REASONS = frozenset(
         "provider_call_failed",
         "transport_contract_failed",
         "ranking_contract_failed",
+        "decision_contract_failed",
         "watchdog_missing_repetition",
         "insufficient_valid_repetitions",
+        "insufficient_consensus_agreement",
     }
 )
 PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
@@ -54,6 +61,8 @@ PromptProfile = Literal[
     "ranking_only_v1",
     "bounded_ranking_v1",
     "bounded_ranking_v2",
+    "bounded_ranking_v3",
+    "risk_veto_v1",
 ]
 InputContract = Literal[
     "hot_sector_candidate_universe_v1",
@@ -72,6 +81,7 @@ ReadablePromptVersion = Literal[
     "2026-07-17.5",
     "2026-07-17.6",
     "2026-07-17.7",
+    "2026-07-18.8",
 ]
 
 _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
@@ -80,6 +90,8 @@ _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {
     "ranking_only_v1": RANKING_ONLY_PROMPT_VERSION,
     "bounded_ranking_v1": BOUNDED_RANKING_PROMPT_VERSION,
     "bounded_ranking_v2": BOUNDED_RANKING_V2_PROMPT_VERSION,
+    "bounded_ranking_v3": BOUNDED_RANKING_V3_PROMPT_VERSION,
+    "risk_veto_v1": RISK_VETO_PROMPT_VERSION,
 }
 
 _CN_SYMBOL = re.compile(r"^\d{6}\.(?:SH|SZ|BJ)$")
@@ -130,6 +142,16 @@ def contract_info(market: Market) -> dict[str, object]:
             "output_contract": "research_selection_or_ranking_diagnostic",
             "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
         }
+        profiles["bounded_ranking_v3"] = {
+            "prompt_version": BOUNDED_RANKING_V3_PROMPT_VERSION,
+            "output_contract": "strict_ranking_selection",
+            "ranking_policy": BOUNDED_RANKING_V3_POLICY.contract_record(),
+        }
+        profiles["risk_veto_v1"] = {
+            "prompt_version": RISK_VETO_PROMPT_VERSION,
+            "output_contract": "strict_risk_veto_decision",
+            "risk_veto_policy": RISK_VETO_POLICY.contract_record(),
+        }
     payload: dict[str, object] = {
         "schema_version": CONTRACT_INFO_SCHEMA_VERSION,
         "artifact_type": CONTRACT_INFO_ARTIFACT_TYPE,
@@ -144,6 +166,9 @@ def contract_info(market: Market) -> dict[str, object]:
             "publication_selection": _schema_record(ModelSelection.model_json_schema()),
             "ranking_selection": _schema_record(
                 RankingModelSelection.model_json_schema()
+            ),
+            "risk_veto_decision": _schema_record(
+                RiskVetoModelDecision.model_json_schema()
             ),
         },
     }
@@ -163,15 +188,26 @@ def contract_info(market: Market) -> dict[str, object]:
         }
         payload["shadow_campaign_contract"] = {
             "schema_version": SHADOW_CAMPAIGN_SCHEMA_VERSION,
-            "prompt_profile": "bounded_ranking_v2",
-            "prompt_version": BOUNDED_RANKING_V2_PROMPT_VERSION,
+            "prompt_profiles": {
+                "bounded_ranking_v3": BOUNDED_RANKING_V3_PROMPT_VERSION,
+                "risk_veto_v1": RISK_VETO_PROMPT_VERSION,
+            },
             "repetitions": SHADOW_REPETITIONS,
             "min_valid_repetitions": SHADOW_MIN_VALID_REPETITIONS,
             "providers": ["deepseek", "openai"],
-            "partition_layout": "campaign/provider--model/date/repetition",
+            "partition_layout": "campaign/arm/provider--model/date/repetition",
+            "model_partition_source": "ai_shadow_launch_receipt",
+            "arms": ["bounded_ranking", "risk_veto"],
+            "decision_plan_artifact_type": "ai_shadow_decision_plan",
+            "launch_receipt_artifact_type": "ai_shadow_launch_receipt",
+            "evidence_statuses": ["prospective_bound", "legacy_unbound"],
             "repetition_artifact_type": "ai_shadow_repetition",
             "consensus_artifact_type": "ai_shadow_consensus",
             "ranking_eligibility": "ranking_contract=passed",
+            "repetition_eligibility": {
+                "bounded_ranking": "ranking_contract=passed",
+                "risk_veto": "decision_contract=passed",
+            },
         }
     payload["contract_sha256"] = canonical_contract_sha256(payload)
     ContractInfoArtifact.model_validate(payload, strict=True)
@@ -262,12 +298,41 @@ class RankingModelSelection(BaseModel):
     picks: list[RankingModelPick]
 
 
+RiskCode = Literal[
+    "overheat",
+    "instability",
+    "liquidity",
+    "evidence_conflict",
+    "none",
+]
+
+
+class RiskVetoModelDecision(BaseModel):
+    """Canonical strict provider schema for one optional risk veto."""
+
+    model_config = ConfigDict(extra="forbid", strict=True)
+
+    veto_symbol: str = Field(min_length=1, max_length=15)
+    risk_code: RiskCode
+
+    @field_validator("veto_symbol")
+    @classmethod
+    def normalize_symbol(cls, value: str) -> str:
+        return value.strip().upper()
+
+    @model_validator(mode="after")
+    def validate_none_pair(self) -> RiskVetoModelDecision:
+        if (self.veto_symbol == "NONE") != (self.risk_code == "none"):
+            raise ValueError("NONE veto_symbol and none risk_code must be paired")
+        return self
+
+
 class ContractInfoArtifact(BaseModel):
     """Schema of the additive machine handshake exposed to consumers."""
 
     model_config = ConfigDict(extra="forbid", strict=True)
 
-    schema_version: Literal["1.1.0"]
+    schema_version: Literal["1.1.0", "1.2.0"]
     artifact_type: Literal["ai_stock_picker_contract_info"]
     market: Market
     provider: Provider
@@ -508,17 +573,22 @@ __all__ = [
     "ContractInfoArtifact",
     "BOUNDED_RANKING_PROMPT_VERSION",
     "BOUNDED_RANKING_V2_PROMPT_VERSION",
+    "BOUNDED_RANKING_V3_PROMPT_VERSION",
     "InputContract",
     "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_ID",
     "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_SHA256",
     "HOT_SECTOR_V2_SOURCE_CONCEPTS_POLICY_VERSION",
     "LEGACY_STABILITY_PROMPT_VERSION",
+    "LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION",
     "Lineage",
     "Market",
     "ModelPick",
     "ModelSelection",
     "RankingModelPick",
     "RankingModelSelection",
+    "RISK_VETO_PROMPT_VERSION",
+    "RiskCode",
+    "RiskVetoModelDecision",
     "PROMPT_VERSION",
     "RANKING_ONLY_PROMPT_VERSION",
     "PointInTimeAssurance",

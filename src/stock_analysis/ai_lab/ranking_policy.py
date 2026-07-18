@@ -12,7 +12,12 @@ from .ranking_policy_contract import (
     BOUNDED_RANKING_PROFILE,
     BOUNDED_RANKING_V2_POLICY,
     BOUNDED_RANKING_V2_PROFILE,
+    BOUNDED_RANKING_V3_POLICY,
+    BOUNDED_RANKING_V3_PROFILE,
+    RISK_VETO_POLICY,
+    RISK_VETO_PROFILE,
     BoundedRankingPolicy,
+    RiskVetoPolicy,
 )
 
 
@@ -23,7 +28,29 @@ def policy_for_profile(profile: str) -> BoundedRankingPolicy | None:
         return BOUNDED_RANKING_POLICY
     if profile == BOUNDED_RANKING_V2_PROFILE:
         return BOUNDED_RANKING_V2_POLICY
+    if profile == BOUNDED_RANKING_V3_PROFILE:
+        return BOUNDED_RANKING_V3_POLICY
     return None
+
+
+def risk_veto_policy_for_profile(profile: str) -> RiskVetoPolicy | None:
+    """Resolve the opt-in risk-veto policy without changing ranking profiles."""
+
+    return RISK_VETO_POLICY if profile == RISK_VETO_PROFILE else None
+
+
+def risk_veto_presentation_order(
+    universe: CandidateUniverse, policy: RiskVetoPolicy = RISK_VETO_POLICY
+) -> tuple[str, ...]:
+    """Hash-shuffle risk-veto inputs without exposing their Numeric order."""
+
+    prefix = f"{policy.policy_id}\0{universe.input_sha256}\0"
+    return tuple(
+        sorted(
+            (candidate.symbol for candidate in universe.candidates),
+            key=lambda symbol: sha256(f"{prefix}{symbol}".encode()).hexdigest(),
+        )
+    )
 
 
 def numeric_ranking_method(universe: CandidateUniverse) -> str:
@@ -147,6 +174,53 @@ def policy_evidence_record(
     }
 
 
+def risk_veto_partitions(
+    universe: CandidateUniverse, policy: RiskVetoPolicy = RISK_VETO_POLICY
+) -> tuple[tuple[str, ...], tuple[str, ...]]:
+    """Return the frozen current selection and deterministic reserve membership."""
+
+    ranked = numeric_ranked_candidates(universe)
+    selected = tuple(candidate.symbol for candidate in ranked[: policy.selected_count])
+    reserves = tuple(
+        candidate.symbol
+        for candidate in ranked[policy.reserve_start_rank - 1 : policy.reserve_end_rank]
+    )
+    return selected, reserves
+
+
+def validate_risk_veto_plan(
+    policy: RiskVetoPolicy,
+    universe: CandidateUniverse,
+    *,
+    market: str,
+    top_n: int,
+) -> None:
+    """Reject plans that cannot implement the immutable risk-veto policy."""
+
+    if market != "CN":
+        raise ValueError("risk veto is restricted to the CN research path")
+    if top_n != policy.selected_count:
+        raise ValueError(f"risk veto requires top_n={policy.selected_count}")
+    if len(universe.candidates) < policy.reserve_end_rank:
+        raise ValueError(
+            f"risk veto requires at least {policy.reserve_end_rank} candidates"
+        )
+
+
+def risk_veto_evidence_record(
+    universe: CandidateUniverse, policy: RiskVetoPolicy = RISK_VETO_POLICY
+) -> dict[str, object]:
+    """Bind the risk-veto policy to the exact Numeric selection and reserves."""
+
+    selected, reserves = risk_veto_partitions(universe, policy)
+    return {
+        **policy.contract_record(),
+        "numeric_ranking_method": numeric_ranking_method(universe),
+        "selected_symbols": list(selected),
+        "reserve_symbols": list(reserves),
+    }
+
+
 def boundary_score_level(policy: BoundedRankingPolicy, numeric_rank: int) -> str:
     """Coarsen a boundary rank into a stable three-level representation."""
 
@@ -201,6 +275,11 @@ __all__ = [
     "policy_evidence_record",
     "policy_for_profile",
     "policy_partitions",
+    "risk_veto_evidence_record",
+    "risk_veto_partitions",
+    "risk_veto_presentation_order",
+    "risk_veto_policy_for_profile",
     "validate_policy_plan",
     "validate_policy_selection",
+    "validate_risk_veto_plan",
 ]

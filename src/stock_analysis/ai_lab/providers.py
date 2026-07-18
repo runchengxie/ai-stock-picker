@@ -310,6 +310,7 @@ def call_openai_responses_exchange(
     prompt: str,
     *,
     response_schema: dict[str, object],
+    response_schema_name: str = "ai_stock_ranking",
     model: str,
     max_output_tokens: int = 8_192,
     timeout: float = 120,
@@ -327,6 +328,8 @@ def call_openai_responses_exchange(
         raise ProviderError("max_output_tokens must be between 1 and 65536")
     if not isinstance(response_schema, dict) or not response_schema:
         raise ProviderError("response_schema must be a non-empty JSON Schema object")
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", response_schema_name):
+        raise ProviderError("response_schema_name contains unsupported characters")
     payload: dict[str, object] = {
         "model": model,
         "instructions": OPENAI_SYSTEM_MESSAGE,
@@ -336,7 +339,7 @@ def call_openai_responses_exchange(
         "text": {
             "format": {
                 "type": "json_schema",
-                "name": "ai_stock_ranking",
+                "name": response_schema_name,
                 "strict": True,
                 "schema": response_schema,
             }

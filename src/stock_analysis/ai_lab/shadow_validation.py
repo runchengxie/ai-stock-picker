@@ -2,36 +2,94 @@
 
 from __future__ import annotations
 
-import json
 import re
 from collections.abc import Mapping
-from datetime import date, datetime, timezone
+from datetime import timezone
 from hashlib import sha256
 from pathlib import Path
-from statistics import median
 from typing import cast
 from zoneinfo import ZoneInfo
 
 from .bundle_paths import reject_symlink_path, safe_bundle_path
 from .contracts import (
+    LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION,
     SHADOW_CAMPAIGN_SCHEMA_VERSION,
     SHADOW_MIN_VALID_REPETITIONS,
     SHADOW_REPETITION_NAMES,
     SHADOW_REPETITIONS,
-    SHADOW_TOMBSTONE_REASONS,
+    PromptProfile,
     Style,
 )
 from .evidence_consistency import numeric_ranking_bytes
 from .providers import ProviderExchange
 from .ranking_policy_contract import (
-    BOUNDED_RANKING_V2_POLICY,
     BOUNDED_RANKING_V2_PROMPT_VERSION,
+    BOUNDED_RANKING_V3_PROMPT_VERSION,
+    RISK_VETO_POLICY,
+    RISK_VETO_PROMPT_VERSION,
 )
-from .selection import build_selection_plan
+from .selection import SelectionPlan, build_selection_plan
+from .shadow_contract import (
+    RiskDecision,
+    bounded_consensus_payload,
+    read_risk_decision,
+    risk_veto_consensus_payload,
+    shadow_arm_for_profile,
+    shadow_response_schema,
+    shadow_response_schema_name,
+    shadow_schema_for_profile,
+)
 from .shadow_exchange_validation import validate_shadow_exchange
+from .shadow_lineage_validation import (
+    LINEAGE_IDENTITY_FIELDS as _LINEAGE_IDENTITY_FIELDS,
+)
+from .shadow_lineage_validation import (
+    evidence_status as _evidence_status,
+)
+from .shadow_lineage_validation import (
+    validate_archived_shadow_lineage as _validate_prospective_lineage,
+)
+from .shadow_policy_validation import (
+    bounded_policy_partitions as _policy_partitions,
+)
+from .shadow_policy_validation import (
+    risk_policy_partitions as _risk_policy_partitions,
+)
+from .shadow_validation_support import (
+    campaign_day_roots as _campaign_day_roots,
+)
+from .shadow_validation_support import (
+    date_value as _date_value,
+)
+from .shadow_validation_support import (
+    datetime_value as _datetime_value,
+)
+from .shadow_validation_support import (
+    digest as _digest,
+)
+from .shadow_validation_support import (
+    indexed_file as _indexed_file,
+)
+from .shadow_validation_support import (
+    read_object as _read_object,
+)
+from .shadow_validation_support import (
+    validate_campaign_pins as _validate_campaign_pins,
+)
+from .shadow_validation_support import (
+    validate_files as _validate_files,
+)
+from .shadow_validation_support import (
+    validate_model_identity as _validate_model_identity,
+)
+from .shadow_validation_support import (
+    validate_tombstone_reason as _validate_tombstone_reason,
+)
+from .shadow_validation_support import (
+    validated_bundle_root as _validated_bundle_root,
+)
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_MODEL = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _NETWORK_FILES = {
     "http_request_envelope.json",
@@ -57,7 +115,6 @@ _COMMON_IDENTITY_FIELDS = (
     "input_contract",
     "input_sha256",
     "candidate_symbols_sha256",
-    "ranking_policy",
     "strict_point_in_time",
     "eligible_as_oos_evidence",
     "research_only",
@@ -69,7 +126,10 @@ def validate_shadow_repetition(root: str | Path) -> dict[str, object]:
 
     path = _validated_bundle_root(root, "shadow repetition")
     manifest = _read_object(path / "manifest.json")
-    if manifest.get("schema_version") != SHADOW_CAMPAIGN_SCHEMA_VERSION:
+    if manifest.get("schema_version") not in {
+        LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION,
+        SHADOW_CAMPAIGN_SCHEMA_VERSION,
+    }:
         raise ValueError("shadow repetition schema_version is invalid")
     if manifest.get("artifact_type") != "ai_shadow_repetition":
         raise ValueError("shadow repetition artifact_type is invalid")
@@ -80,25 +140,56 @@ def validate_shadow_repetition(root: str | Path) -> dict[str, object]:
     _validate_common_manifest(manifest)
     _validate_repetition_file_set(manifest)
     _validate_owner_evidence(path, manifest)
+    arm = _manifest_arm(manifest)
     ranking_path = manifest.get("ranking_path")
+    decision_path = manifest.get("decision_path")
     if status == "complete":
-        if (
-            manifest.get("ranking_contract") != "passed"
-            or ranking_path != "ranking.json"
-        ):
-            raise ValueError("complete shadow repetition requires a passed ranking")
-        read_shadow_ranking(path, manifest)
+        if arm == "risk_veto":
+            if (
+                manifest.get("decision_contract") != "passed"
+                or decision_path != "decision.json"
+                or ranking_path is not None
+            ):
+                raise ValueError(
+                    "complete risk-veto repetition requires a passed decision"
+                )
+            read_shadow_risk_decision(path, manifest)
+        else:
+            if (
+                manifest.get("ranking_contract") != "passed"
+                or ranking_path != "ranking.json"
+            ):
+                raise ValueError("complete shadow repetition requires a passed ranking")
+            read_shadow_ranking(path, manifest)
         if manifest.get("tombstone_reason") is not None:
             raise ValueError(
                 "complete shadow repetition cannot have a tombstone reason"
             )
     else:
         _validate_tombstone_reason(manifest.get("tombstone_reason"))
-        if ranking_path is not None or manifest.get("ranking_contract") == "passed":
+        if (
+            ranking_path is not None
+            or decision_path is not None
+            or manifest.get("ranking_contract") == "passed"
+            or manifest.get("decision_contract") == "passed"
+        ):
             raise ValueError(
                 "shadow repetition tombstone cannot preserve a passed rank"
             )
     return manifest
+
+
+def _manifest_file_sha256(manifest: Mapping[str, object], file_name: str) -> str:
+    files = manifest.get("files")
+    if not isinstance(files, Mapping):
+        raise ValueError("shadow manifest files index is invalid")
+    metadata = files.get(file_name)
+    if not isinstance(metadata, Mapping):
+        raise ValueError(f"shadow manifest does not index {file_name}")
+    digest = metadata.get("sha256")
+    if not isinstance(digest, str) or _SHA256.fullmatch(digest) is None:
+        raise ValueError(f"shadow manifest {file_name} hash is invalid")
+    return digest
 
 
 def validate_shadow_day(day_dir: str | Path) -> dict[str, object]:
@@ -129,16 +220,31 @@ def validate_shadow_day(day_dir: str | Path) -> dict[str, object]:
         )
         selected_symbols = cast(list[str], payload["selected_symbols"])
     numeric_fallback = _numeric_fallback_symbols(consensus)
+    arm = _manifest_arm(consensus)
+    numeric_ranking_hashes = {
+        _manifest_file_sha256(item, "numeric_ranking.json") for item in manifests
+    }
+    if len(numeric_ranking_hashes) != 1:
+        raise ValueError("shadow repetitions do not share one numeric ranking artifact")
     return {
         "valid": True,
         "campaign_id": consensus["campaign_id"],
         "model_partition": consensus["model_partition"],
+        "arm": arm,
         "signal_date": consensus["signal_date"],
         "input_contract": consensus["input_contract"],
         "input_sha256": consensus["input_sha256"],
         "candidate_symbols_sha256": consensus["candidate_symbols_sha256"],
+        "numeric_ranking_sha256": numeric_ranking_hashes.pop(),
+        "consensus_manifest_sha256": sha256(
+            (consensus_root / "manifest.json").read_bytes()
+        ).hexdigest(),
         "prompt_version": consensus["prompt_version"],
+        "prompt_profile": consensus["prompt_profile"],
         "plan_sha256": consensus["plan_sha256"],
+        "decision_plan_sha256": consensus.get("decision_plan_sha256"),
+        "launch_receipt_sha256": consensus.get("launch_receipt_sha256"),
+        "evidence_status": _evidence_status(consensus),
         "repetition_statuses": [item["status"] for item in manifests],
         "valid_repetitions": consensus["valid_repetitions"],
         "consensus_status": consensus["status"],
@@ -146,9 +252,7 @@ def validate_shadow_day(day_dir: str | Path) -> dict[str, object]:
         "numeric_fallback_symbols": numeric_fallback,
         "effective_symbols": selected_symbols or numeric_fallback,
         "selection_source": (
-            "bounded_ranking_consensus"
-            if selected_symbols is not None
-            else "numeric_fallback"
+            f"{arm}_consensus" if selected_symbols is not None else "numeric_fallback"
         ),
         "consensus_path": str(consensus_root / "consensus.json")
         if consensus["status"] == "complete"
@@ -157,6 +261,18 @@ def validate_shadow_day(day_dir: str | Path) -> dict[str, object]:
 
 
 def _numeric_fallback_symbols(consensus: Mapping[str, object]) -> list[str]:
+    if _manifest_arm(consensus) == "risk_veto":
+        policy = consensus.get("risk_veto_policy")
+        if not isinstance(policy, dict):
+            raise ValueError("shadow risk_veto_policy is invalid")
+        selected = policy.get("selected_symbols")
+        if (
+            not isinstance(selected, list)
+            or len(selected) != RISK_VETO_POLICY.selected_count
+            or any(not isinstance(item, str) or not item for item in selected)
+        ):
+            raise ValueError("shadow risk-veto Numeric selection is invalid")
+        return cast(list[str], selected)
     policy = consensus.get("ranking_policy")
     if not isinstance(policy, dict):
         raise ValueError("shadow ranking_policy is invalid")
@@ -183,15 +299,12 @@ def validate_shadow_campaign(campaign_root: str | Path) -> dict[str, object]:
         raise ValueError("shadow campaign root is invalid")
     days: list[dict[str, object]] = []
     records: list[tuple[dict[str, object], dict[str, object]]] = []
-    for model_root in sorted(root.iterdir()):
-        if not model_root.is_dir() or model_root.is_symlink():
-            raise ValueError("shadow campaign model partition is invalid")
-        for day_root in sorted(model_root.iterdir()):
-            summary = validate_shadow_day(day_root)
-            days.append(summary)
-            records.append(
-                (summary, _read_object(day_root / "consensus" / "manifest.json"))
-            )
+    for day_root in _campaign_day_roots(root):
+        summary = validate_shadow_day(day_root)
+        days.append(summary)
+        records.append(
+            (summary, _read_object(day_root / "consensus" / "manifest.json"))
+        )
     if not days:
         raise ValueError("shadow campaign contains no model/date partitions")
     if any(item["campaign_id"] != root.name for item in days):
@@ -210,14 +323,25 @@ def validate_shadow_campaign(campaign_root: str | Path) -> dict[str, object]:
 
 def _validate_day_identity(day: Path, manifests: list[dict[str, object]]) -> None:
     first = manifests[0]
-    for field in _COMMON_IDENTITY_FIELDS:
+    arm = _manifest_arm(first)
+    policy_field = "risk_veto_policy" if arm == "risk_veto" else "ranking_policy"
+    fields = (*_COMMON_IDENTITY_FIELDS, policy_field)
+    if first.get("schema_version") != LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION:
+        fields = (*fields, "arm", *_LINEAGE_IDENTITY_FIELDS)
+    for field in fields:
         if any(item.get(field) != first.get(field) for item in manifests[1:]):
             raise ValueError(f"shadow repetition {field} differs within one day")
     if first.get("signal_date") != day.name:
         raise ValueError("shadow day path does not match signal_date")
     if first.get("model_partition") != day.parent.name:
         raise ValueError("shadow model path does not match model_partition")
-    if first.get("campaign_id") != day.parent.parent.name:
+    if first.get("schema_version") == LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION:
+        campaign_name = day.parent.parent.name
+    else:
+        if day.parent.parent.name != arm:
+            raise ValueError("shadow arm path does not match artifact arm")
+        campaign_name = day.parent.parent.parent.name
+    if first.get("campaign_id") != campaign_name:
         raise ValueError("shadow campaign path does not match campaign_id")
     if [item.get("repetition") for item in manifests] != [1, 2, 3]:
         raise ValueError("shadow repetition numbers are not canonical")
@@ -228,7 +352,10 @@ def _validate_consensus_manifest(
     consensus: dict[str, object],
     repetitions: list[dict[str, object]],
 ) -> None:
-    if consensus.get("schema_version") != SHADOW_CAMPAIGN_SCHEMA_VERSION:
+    if consensus.get("schema_version") not in {
+        LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION,
+        SHADOW_CAMPAIGN_SCHEMA_VERSION,
+    }:
         raise ValueError("shadow consensus schema_version is invalid")
     if consensus.get("artifact_type") != "ai_shadow_consensus":
         raise ValueError("shadow consensus artifact_type is invalid")
@@ -238,9 +365,7 @@ def _validate_consensus_manifest(
         raise ValueError("shadow consensus repetitions is invalid")
     if consensus.get("min_valid_repetitions") != SHADOW_MIN_VALID_REPETITIONS:
         raise ValueError("shadow consensus min_valid_repetitions is invalid")
-    for field in _COMMON_IDENTITY_FIELDS:
-        if consensus.get(field) != repetitions[0].get(field):
-            raise ValueError(f"shadow consensus {field} differs from repetitions")
+    _validate_consensus_identity(consensus, repetitions[0])
     valid = [
         index
         for index, manifest in enumerate(repetitions, start=1)
@@ -249,16 +374,45 @@ def _validate_consensus_manifest(
     if consensus.get("valid_repetitions") != valid:
         raise ValueError("shadow consensus valid_repetitions is inconsistent")
     if len(valid) < SHADOW_MIN_VALID_REPETITIONS:
-        if consensus.get("status") != "tombstone":
-            raise ValueError("insufficient repetitions require consensus tombstone")
-        _validate_tombstone_reason(consensus.get("tombstone_reason"))
-        if consensus.get("tombstone_reason") != "insufficient_valid_repetitions":
-            raise ValueError("shadow consensus tombstone reason is inconsistent")
-        if consensus.get("consensus_path") is not None:
-            raise ValueError("consensus tombstone cannot point to a ranking")
-        if consensus.get("files") != {}:
-            raise ValueError("consensus tombstone cannot contain ranked files")
+        _validate_consensus_tombstone(consensus, "insufficient_valid_repetitions")
         return
+    expected = _consensus_from_archives(root.parent, repetitions)
+    if expected is None:
+        _validate_consensus_tombstone(consensus, "insufficient_consensus_agreement")
+        return
+    _validate_complete_consensus(root, consensus, expected)
+
+
+def _validate_consensus_identity(
+    consensus: Mapping[str, object], repetition: Mapping[str, object]
+) -> None:
+    arm = _manifest_arm(consensus)
+    policy_field = "risk_veto_policy" if arm == "risk_veto" else "ranking_policy"
+    fields = (*_COMMON_IDENTITY_FIELDS, policy_field)
+    if consensus.get("schema_version") != LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION:
+        fields = (*fields, "arm", *_LINEAGE_IDENTITY_FIELDS)
+    for field in fields:
+        if consensus.get(field) != repetition.get(field):
+            raise ValueError(f"shadow consensus {field} differs from repetitions")
+
+
+def _validate_consensus_tombstone(
+    consensus: Mapping[str, object], expected_reason: str
+) -> None:
+    if consensus.get("status") != "tombstone":
+        raise ValueError("missing consensus requires a tombstone")
+    _validate_tombstone_reason(consensus.get("tombstone_reason"))
+    if consensus.get("tombstone_reason") != expected_reason:
+        raise ValueError("shadow consensus tombstone reason is inconsistent")
+    if consensus.get("consensus_path") is not None or consensus.get("files") != {}:
+        raise ValueError("consensus tombstone cannot contain output")
+
+
+def _validate_complete_consensus(
+    root: Path,
+    consensus: Mapping[str, object],
+    expected: Mapping[str, object],
+) -> None:
     if consensus.get("status") != "complete":
         raise ValueError("sufficient repetitions require complete consensus")
     if consensus.get("tombstone_reason") is not None:
@@ -267,15 +421,37 @@ def _validate_consensus_manifest(
         raise ValueError("complete consensus file set is invalid")
     consensus_path = _indexed_file(root, consensus, "consensus_path")
     payload = _read_object(consensus_path)
-    expected = _consensus_from_archives(root.parent, repetitions)
     if payload != expected:
         raise ValueError("shadow consensus does not match archived repetitions")
 
 
 def _consensus_from_archives(
     day_root: Path, repetitions: list[dict[str, object]]
-) -> dict[str, object]:
-    valid = [
+) -> dict[str, object] | None:
+    profile = cast(str, repetitions[0]["prompt_profile"])
+    candidate_name = cast(str, repetitions[0]["candidate_snapshot_path"])
+    style = cast(Style, repetitions[0]["style"])
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=day_root / SHADOW_REPETITION_NAMES[0] / candidate_name,
+        as_of=_date_value(repetitions[0].get("signal_date"), "signal_date"),
+        top_n=10,
+        style=style,
+        prompt_profile=cast(PromptProfile, profile),
+    )
+    if _manifest_arm(repetitions[0]) == "risk_veto":
+        decisions = [
+            (
+                index,
+                read_shadow_risk_decision(
+                    day_root / SHADOW_REPETITION_NAMES[index - 1], manifest
+                ),
+            )
+            for index, manifest in enumerate(repetitions, start=1)
+            if manifest["status"] == "complete"
+        ]
+        return risk_veto_consensus_payload(plan, decisions)
+    rankings = [
         (
             index,
             read_shadow_ranking(
@@ -285,54 +461,7 @@ def _consensus_from_archives(
         for index, manifest in enumerate(repetitions, start=1)
         if manifest["status"] == "complete"
     ]
-    locked = valid[0][1][:7]
-    for _index, symbols in valid[1:]:
-        if symbols[:7] != locked:
-            raise ValueError("shadow repetitions disagree on the locked prefix")
-    records = _tally_records(valid)
-    winners = [cast(str, item["symbol"]) for item in records[:3]]
-    return {
-        "schema_version": SHADOW_CAMPAIGN_SCHEMA_VERSION,
-        "artifact_type": "ai_shadow_consensus_ranking",
-        "method": "votes_then_borda_then_median_then_symbol_v1",
-        "valid_repetitions": [item[0] for item in valid],
-        "locked_prefix": list(locked),
-        "boundary_winners": winners,
-        "selected_symbols": [*locked, *winners],
-        "boundary_tallies": records,
-    }
-
-
-def _tally_records(
-    valid: list[tuple[int, tuple[str, ...]]],
-) -> list[dict[str, object]]:
-    tallies: dict[str, dict[str, object]] = {}
-    for _index, symbols in valid:
-        for order, symbol in enumerate(symbols[7:], start=1):
-            tally = tallies.setdefault(
-                symbol, {"votes": 0, "ranking_points": 0, "orders": []}
-            )
-            tally["votes"] = cast(int, tally["votes"]) + 1
-            tally["ranking_points"] = cast(int, tally["ranking_points"]) + 4 - order
-            cast(list[int], tally["orders"]).append(order)
-    records: list[dict[str, object]] = [
-        {
-            "symbol": symbol,
-            "votes": cast(int, value["votes"]),
-            "ranking_points": cast(int, value["ranking_points"]),
-            "median_order": float(median(cast(list[int], value["orders"]))),
-        }
-        for symbol, value in tallies.items()
-    ]
-    records.sort(
-        key=lambda item: (
-            -cast(int, item["votes"]),
-            -cast(int, item["ranking_points"]),
-            cast(float, item["median_order"]),
-            cast(str, item["symbol"]),
-        )
-    )
-    return records
+    return bounded_consensus_payload(plan, rankings)
 
 
 def read_shadow_ranking(root: Path, manifest: Mapping[str, object]) -> tuple[str, ...]:
@@ -359,8 +488,24 @@ def read_shadow_ranking(root: Path, manifest: Mapping[str, object]) -> tuple[str
     return result
 
 
+def read_shadow_risk_decision(
+    root: Path, manifest: Mapping[str, object]
+) -> RiskDecision:
+    """Read one hash-indexed risk-veto decision after policy validation."""
+
+    payload = _read_object(_indexed_file(root, manifest, "decision_path"))
+    decision = read_risk_decision(payload)
+    selected, _reserves = _risk_policy_partitions(manifest)
+    if decision[0] is not None and decision[0] not in selected:
+        raise ValueError("shadow risk-veto decision is outside Numeric Top10")
+    return decision
+
+
 def _validate_common_manifest(manifest: Mapping[str, object]) -> None:
-    if manifest.get("schema_version") != SHADOW_CAMPAIGN_SCHEMA_VERSION:
+    profile = manifest.get("prompt_profile")
+    if not isinstance(profile, str):
+        raise ValueError("shadow prompt profile is invalid")
+    if manifest.get("schema_version") != shadow_schema_for_profile(profile):
         raise ValueError("shadow schema_version is invalid")
     campaign_id = manifest.get("campaign_id")
     if not isinstance(campaign_id, str) or _IDENTIFIER.fullmatch(campaign_id) is None:
@@ -373,12 +518,14 @@ def _validate_common_manifest(manifest: Mapping[str, object]) -> None:
         and (generated_local.hour, generated_local.minute) < (16, 0)
     ):
         raise ValueError("shadow generated_at precedes the signal-date close")
-    if (
-        manifest.get("prompt_profile") != "bounded_ranking_v2"
-        or manifest.get("prompt_version") != BOUNDED_RANKING_V2_PROMPT_VERSION
-    ):
+    expected_versions = {
+        "bounded_ranking_v2": BOUNDED_RANKING_V2_PROMPT_VERSION,
+        "bounded_ranking_v3": BOUNDED_RANKING_V3_PROMPT_VERSION,
+        "risk_veto_v1": RISK_VETO_PROMPT_VERSION,
+    }
+    if manifest.get("prompt_version") != expected_versions.get(profile):
         raise ValueError("shadow prompt contract is invalid")
-    if manifest.get("top_n") != BOUNDED_RANKING_V2_POLICY.required_output_count:
+    if manifest.get("top_n") != 10:
         raise ValueError("shadow top_n is invalid")
     if manifest.get("style") not in {"momentum", "quality"}:
         raise ValueError("shadow style is invalid")
@@ -402,84 +549,26 @@ def _validate_common_manifest(manifest: Mapping[str, object]) -> None:
         or manifest.get("research_only") is not True
     ):
         raise ValueError("shadow research evidence flags are invalid")
+    _evidence_status(manifest)
     _validate_model_identity(manifest)
-    _policy_partitions(manifest)
+    if _manifest_arm(manifest) == "risk_veto":
+        _risk_policy_partitions(manifest)
+    else:
+        _policy_partitions(manifest)
 
 
-def _validate_model_identity(manifest: Mapping[str, object]) -> None:
-    provider = manifest.get("provider")
-    parameters = manifest.get("model_parameters")
-    if provider not in {"deepseek", "openai"} or not isinstance(parameters, dict):
-        raise ValueError("shadow model identity is invalid")
-    if set(parameters) != {
-        "provider",
-        "model",
-        "max_output_tokens",
-        "thinking",
-        "reasoning_effort",
-    }:
-        raise ValueError("shadow model parameters are invalid")
-    model = parameters.get("model")
-    if (
-        parameters.get("provider") != provider
-        or not isinstance(model, str)
-        or _MODEL.fullmatch(model) is None
-        or manifest.get("model_partition") != f"{provider}--{model}"
-    ):
-        raise ValueError("shadow model partition is inconsistent")
-    maximum = parameters.get("max_output_tokens")
-    if (
-        isinstance(maximum, bool)
-        or not isinstance(maximum, int)
-        or not 1 <= maximum <= 65_536
-    ):
-        raise ValueError("shadow max_output_tokens is invalid")
-    thinking = parameters.get("thinking")
-    effort = parameters.get("reasoning_effort")
-    if provider == "openai" and (thinking is not None or effort is not None):
-        raise ValueError("OpenAI shadow contains DeepSeek reasoning parameters")
-    if provider == "deepseek" and (
-        thinking not in {"enabled", "disabled"}
-        or (thinking == "enabled" and effort not in {"high", "max"})
-        or (thinking == "disabled" and effort is not None)
-    ):
-        raise ValueError("DeepSeek shadow reasoning parameters are invalid")
-
-
-def _policy_partitions(
-    manifest: Mapping[str, object],
-) -> tuple[tuple[str, ...], frozenset[str]]:
-    policy = manifest.get("ranking_policy")
-    if not isinstance(policy, dict):
-        raise ValueError("shadow ranking_policy is invalid")
-    static = BOUNDED_RANKING_V2_POLICY.contract_record()
-    if any(policy.get(field) != value for field, value in static.items()):
-        raise ValueError("shadow ranking_policy static contract is invalid")
-    expected_keys = {
-        *static,
-        "numeric_ranking_method",
-        "locked_prefix_symbols",
-        "boundary_symbols",
-    }
-    if set(policy) != expected_keys:
-        raise ValueError("shadow ranking_policy fields are invalid")
-    locked = policy.get("locked_prefix_symbols")
-    boundary = policy.get("boundary_symbols")
-    if (
-        not isinstance(locked, list)
-        or len(locked) != BOUNDED_RANKING_V2_POLICY.locked_prefix_count
-        or not isinstance(boundary, list)
-        or len(boundary)
-        != (
-            BOUNDED_RANKING_V2_POLICY.boundary_end_rank
-            - BOUNDED_RANKING_V2_POLICY.boundary_start_rank
-            + 1
-        )
-        or any(not isinstance(item, str) or not item for item in [*locked, *boundary])
-        or len({*locked, *boundary}) != len(locked) + len(boundary)
-    ):
-        raise ValueError("shadow ranking_policy partitions are invalid")
-    return tuple(cast(list[str], locked)), frozenset(cast(list[str], boundary))
+def _manifest_arm(manifest: Mapping[str, object]) -> str:
+    profile = manifest.get("prompt_profile")
+    if not isinstance(profile, str):
+        raise ValueError("shadow prompt profile is invalid")
+    arm = shadow_arm_for_profile(profile)
+    if manifest.get("schema_version") == LEGACY_SHADOW_CAMPAIGN_SCHEMA_VERSION:
+        if profile != "bounded_ranking_v2" or "arm" in manifest:
+            raise ValueError("legacy shadow arm contract is invalid")
+        return arm
+    if manifest.get("arm") != arm:
+        raise ValueError("shadow arm is inconsistent with prompt profile")
+    return arm
 
 
 def _validate_repetition_file_set(manifest: Mapping[str, object]) -> None:
@@ -494,42 +583,91 @@ def _validate_repetition_file_set(manifest: Mapping[str, object]) -> None:
         raise ValueError("shadow repetition requires one candidate snapshot")
     if candidates != {manifest.get("candidate_snapshot_path")}:
         raise ValueError("shadow candidate snapshot path is inconsistent")
-    base = {*candidates, "numeric_ranking.json", "prompt.txt"}
+    lineage_files = (
+        {"decision-plan.json", "launch-receipt.json"}
+        if _evidence_status(manifest) == "prospective_bound"
+        else set()
+    )
+    base = {
+        *candidates,
+        "numeric_ranking.json",
+        "prompt.txt",
+        *lineage_files,
+    }
     status = manifest.get("status")
+    arm = _manifest_arm(manifest)
     if status == "complete":
-        expected = {*base, *_NETWORK_FILES, "model_response.txt", "ranking.json"}
+        output_name = "decision.json" if arm == "risk_veto" else "ranking.json"
+        expected = {*base, *_NETWORK_FILES, "model_response.txt", output_name}
         if names != expected:
             raise ValueError("complete shadow repetition file set is invalid")
-        if (
-            manifest.get("transport_contract") != "passed"
-            or manifest.get("ranking_contract") != "passed"
-            or manifest.get("publication_contract") not in {"passed", "failed"}
-        ):
+        valid_contracts = manifest.get("transport_contract") == "passed" and (
+            manifest.get("decision_contract") == "passed"
+            and manifest.get("ranking_contract") == "not_evaluated"
+            and manifest.get("publication_contract") == "not_applicable"
+            if arm == "risk_veto"
+            else manifest.get("ranking_contract") == "passed"
+            and manifest.get("publication_contract") in {"passed", "failed"}
+        )
+        if not valid_contracts:
             raise ValueError("complete shadow repetition contracts are inconsistent")
         return
+    risk_base_contracts = (
+        "failed",
+        "not_evaluated",
+        "not_evaluated",
+        "not_applicable",
+    )
     reason = manifest.get("tombstone_reason")
     if reason in {"provider_call_failed", "watchdog_missing_repetition"}:
         allowed = {frozenset(base)}
-        expected_contracts = ("failed", "not_evaluated", "not_evaluated")
+        expected_contracts = (
+            risk_base_contracts
+            if arm == "risk_veto"
+            else ("failed", "not_evaluated", "not_evaluated")
+        )
     elif reason == "transport_contract_failed":
         allowed = {
             frozenset(base),
             frozenset({*base, *_NETWORK_FILES}),
         }
-        expected_contracts = ("failed", "not_evaluated", "not_evaluated")
+        expected_contracts = (
+            risk_base_contracts
+            if arm == "risk_veto"
+            else ("failed", "not_evaluated", "not_evaluated")
+        )
     elif reason == "ranking_contract_failed":
         allowed = {
             frozenset({*base, *_NETWORK_FILES, "model_response.txt"}),
         }
         expected_contracts = ("passed", "failed", "not_evaluated")
+    elif reason == "decision_contract_failed" and arm == "risk_veto":
+        allowed = {
+            frozenset({*base, *_NETWORK_FILES, "model_response.txt"}),
+        }
+        expected_contracts = (
+            "passed",
+            "not_evaluated",
+            "failed",
+            "not_applicable",
+        )
     else:
         raise ValueError("shadow repetition tombstone reason is invalid")
     if frozenset(names) not in allowed:
         raise ValueError("shadow repetition tombstone file set is invalid")
     actual_contracts = (
-        manifest.get("transport_contract"),
-        manifest.get("ranking_contract"),
-        manifest.get("publication_contract"),
+        (
+            manifest.get("transport_contract"),
+            manifest.get("ranking_contract"),
+            manifest.get("decision_contract"),
+            manifest.get("publication_contract"),
+        )
+        if arm == "risk_veto"
+        else (
+            manifest.get("transport_contract"),
+            manifest.get("ranking_contract"),
+            manifest.get("publication_contract"),
+        )
     )
     if actual_contracts != expected_contracts:
         raise ValueError("shadow repetition tombstone contracts are inconsistent")
@@ -540,19 +678,19 @@ def _validate_owner_evidence(root: Path, manifest: Mapping[str, object]) -> None
     candidate_path = safe_bundle_path(root, candidate_name, label="shadow candidate")
     signal_date = _date_value(manifest.get("signal_date"), "signal_date")
     style = cast(Style, manifest.get("style"))
+    profile = cast(PromptProfile, manifest.get("prompt_profile"))
     plan = build_selection_plan(
         market="CN",
         candidates_path=candidate_path,
         as_of=signal_date,
-        top_n=BOUNDED_RANKING_V2_POLICY.required_output_count,
+        top_n=10,
         style=style,
-        prompt_profile="bounded_ranking_v2",
+        prompt_profile=profile,
     )
     expected = {
         "input_contract": plan.universe.input_contract,
         "input_sha256": plan.universe.input_sha256,
         "candidate_symbols_sha256": plan.universe.candidate_symbols_sha256,
-        "ranking_policy": plan.ranking_policy_record,
         "candidate_observation_date": (
             plan.universe.observation_date.isoformat()
             if plan.universe.observation_date is not None
@@ -564,6 +702,7 @@ def _validate_owner_evidence(root: Path, manifest: Mapping[str, object]) -> None
             else None
         ),
     }
+    expected.update(plan.decision_policy_fields)
     for field, value in expected.items():
         if manifest.get(field) != value:
             raise ValueError(f"shadow {field} differs from the candidate snapshot")
@@ -574,8 +713,10 @@ def _validate_owner_evidence(root: Path, manifest: Mapping[str, object]) -> None
         raise ValueError("shadow prompt does not match the candidate snapshot")
     if (root / "numeric_ranking.json").read_bytes() != numeric_ranking_bytes(plan):
         raise ValueError("shadow numeric ranking does not match the candidate snapshot")
+    if _evidence_status(manifest) == "prospective_bound":
+        _validate_prospective_lineage(root, manifest, plan)
     if _NETWORK_FILES.issubset(cast(dict[str, object], manifest["files"])):
-        _validate_network_evidence(root, manifest, plan.prompt)
+        _validate_network_evidence(root, manifest, plan)
     generated_at = _datetime_value(manifest.get("generated_at"), "generated_at")
     if (
         plan.universe.source_generated_at is not None
@@ -585,7 +726,7 @@ def _validate_owner_evidence(root: Path, manifest: Mapping[str, object]) -> None
 
 
 def _validate_network_evidence(
-    root: Path, manifest: Mapping[str, object], prompt: str
+    root: Path, manifest: Mapping[str, object], plan: SelectionPlan
 ) -> None:
     envelope = _read_object(root / "http_request_envelope.json")
     if set(envelope) != {"endpoint", "method", "headers", "timeout_seconds"}:
@@ -627,137 +768,17 @@ def _validate_network_evidence(
     )
     validate_shadow_exchange(
         exchange,
-        prompt=prompt,
+        prompt=plan.prompt,
         provider=cast(str, manifest["provider"]),
         model_parameters=typed_parameters,
+        response_schema=shadow_response_schema(plan),
+        response_schema_name=shadow_response_schema_name(plan),
     )
-
-
-def _validate_campaign_pins(
-    records: list[tuple[dict[str, object], dict[str, object]]],
-) -> None:
-    model_pins: dict[str, tuple[object, ...]] = {}
-    date_pins: dict[str, tuple[object, ...]] = {}
-    for summary, manifest in records:
-        model_partition = cast(str, summary["model_partition"])
-        model_pin = (
-            manifest.get("provider"),
-            manifest.get("model_parameters"),
-            manifest.get("prompt_profile"),
-            manifest.get("prompt_version"),
-            manifest.get("style"),
-            manifest.get("top_n"),
-            manifest.get("input_contract"),
-        )
-        previous_model = model_pins.setdefault(model_partition, model_pin)
-        if previous_model != model_pin:
-            raise ValueError("shadow model partition parameters drifted across dates")
-        signal_date = cast(str, summary["signal_date"])
-        date_pin = (
-            manifest.get("plan_sha256"),
-            manifest.get("input_contract"),
-            manifest.get("input_sha256"),
-            manifest.get("candidate_symbols_sha256"),
-            manifest.get("prompt_sha256"),
-            manifest.get("ranking_policy"),
-        )
-        previous_date = date_pins.setdefault(signal_date, date_pin)
-        if previous_date != date_pin:
-            raise ValueError("shadow models did not use the same frozen daily input")
-
-
-def _date_value(value: object, field: str) -> date:
-    if not isinstance(value, str):
-        raise ValueError(f"shadow {field} is invalid")
-    try:
-        parsed = date.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError(f"shadow {field} is invalid") from exc
-    if parsed.isoformat() != value:
-        raise ValueError(f"shadow {field} is not canonical")
-    return parsed
-
-
-def _datetime_value(value: object, field: str) -> datetime:
-    if not isinstance(value, str):
-        raise ValueError(f"shadow {field} is invalid")
-    try:
-        parsed = datetime.fromisoformat(value)
-    except ValueError as exc:
-        raise ValueError(f"shadow {field} is invalid") from exc
-    if parsed.tzinfo is None or parsed.utcoffset() is None:
-        raise ValueError(f"shadow {field} must include a UTC offset")
-    return parsed
-
-
-def _validated_bundle_root(root: str | Path, label: str) -> Path:
-    path = Path(root).expanduser()
-    reject_symlink_path(path, label=label)
-    path = path.resolve()
-    if not path.is_dir() or not (path / "manifest.json").is_file():
-        raise ValueError(f"{label} must contain manifest.json")
-    return path
-
-
-def _validate_files(root: Path, manifest: Mapping[str, object]) -> None:
-    records = manifest.get("files")
-    if not isinstance(records, dict):
-        raise ValueError("shadow bundle files index is invalid")
-    expected = {"manifest.json"}
-    for relative, record in records.items():
-        if not isinstance(relative, str) or not isinstance(record, dict):
-            raise ValueError("shadow bundle file record is invalid")
-        path = safe_bundle_path(root, relative, label="shadow bundle")
-        reject_symlink_path(path, label="shadow bundle file")
-        if not path.is_file():
-            raise ValueError("shadow bundle indexed file is missing")
-        content = path.read_bytes()
-        if record != {"sha256": _digest(content), "bytes": len(content)}:
-            raise ValueError(f"shadow bundle file hash mismatch: {relative}")
-        expected.add(relative)
-    actual = {
-        item.relative_to(root).as_posix()
-        for item in root.rglob("*")
-        if item.is_file() or item.is_symlink()
-    }
-    if actual != expected:
-        raise ValueError("shadow bundle contains unindexed files")
-
-
-def _indexed_file(root: Path, manifest: Mapping[str, object], field: str) -> Path:
-    relative = manifest.get(field)
-    records = manifest.get("files")
-    if not isinstance(relative, str) or not isinstance(records, dict):
-        raise ValueError(f"shadow bundle {field} is invalid")
-    if relative not in records:
-        raise ValueError(f"shadow bundle {field} is not indexed")
-    path = safe_bundle_path(root, relative, label="shadow bundle")
-    if not path.is_file():
-        raise ValueError(f"shadow bundle {field} is missing")
-    return path
-
-
-def _read_object(path: Path) -> dict[str, object]:
-    try:
-        value = json.loads(path.read_bytes())
-    except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise ValueError("shadow artifact must contain a JSON object") from exc
-    if not isinstance(value, dict):
-        raise ValueError("shadow artifact must contain a JSON object")
-    return cast(dict[str, object], value)
-
-
-def _digest(value: bytes) -> str:
-    return sha256(value).hexdigest()
-
-
-def _validate_tombstone_reason(value: object) -> None:
-    if value not in SHADOW_TOMBSTONE_REASONS:
-        raise ValueError("shadow tombstone reason is invalid")
 
 
 __all__ = [
     "read_shadow_ranking",
+    "read_shadow_risk_decision",
     "validate_shadow_campaign",
     "validate_shadow_day",
     "validate_shadow_repetition",

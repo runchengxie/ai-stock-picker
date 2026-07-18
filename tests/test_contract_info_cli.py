@@ -15,6 +15,8 @@ from stock_analysis.ai_lab.providers import DEEPSEEK_SYSTEM_MESSAGE, ProviderExc
 from stock_analysis.ai_lab.ranking_policy_contract import (
     BOUNDED_RANKING_POLICY,
     BOUNDED_RANKING_V2_POLICY,
+    BOUNDED_RANKING_V3_POLICY,
+    RISK_VETO_POLICY,
 )
 from stock_analysis.ai_lab.selection import build_selection_plan
 from stock_analysis.app.cli import create_parser, main
@@ -71,7 +73,7 @@ def test_contract_info_is_network_free_and_machine_readable(
     assert payload["artifact_type"] == "ai_stock_picker_contract_info"
     assert payload["market"] == "CN"
     assert payload["provider"] == "deepseek"
-    assert payload["schema_version"] == "1.1.0"
+    assert payload["schema_version"] == "1.2.0"
     assert payload["selection_contract"] == {
         "artifact_type": "ai_stock_selection",
         "schema_version": "1.0.0",
@@ -87,6 +89,11 @@ def test_contract_info_is_network_free_and_machine_readable(
             "prompt_version": "2026-07-17.7",
             "ranking_policy": BOUNDED_RANKING_V2_POLICY.contract_record(),
         },
+        "bounded_ranking_v3": {
+            "output_contract": "strict_ranking_selection",
+            "prompt_version": "2026-07-18.8",
+            "ranking_policy": BOUNDED_RANKING_V3_POLICY.contract_record(),
+        },
         "legacy_stability_v3": {
             "output_contract": "legacy_stability_selection",
             "prompt_version": "2026-07-15.3",
@@ -99,9 +106,22 @@ def test_contract_info_is_network_free_and_machine_readable(
             "output_contract": "research_selection_or_ranking_diagnostic",
             "prompt_version": "2026-07-17.1",
         },
+        "risk_veto_v1": {
+            "output_contract": "strict_risk_veto_decision",
+            "prompt_version": "2026-07-18.8",
+            "risk_veto_policy": RISK_VETO_POLICY.contract_record(),
+        },
     }
     assert payload["shadow_campaign_contract"]["repetitions"] == 3
     assert payload["shadow_campaign_contract"]["min_valid_repetitions"] == 2
+    assert (
+        payload["shadow_campaign_contract"]["model_partition_source"]
+        == "ai_shadow_launch_receipt"
+    )
+    assert payload["shadow_campaign_contract"]["evidence_statuses"] == [
+        "prospective_bound",
+        "legacy_unbound",
+    ]
     assert payload["accepted_candidate_contracts"]["hot_sector_candidate_universe_v2"][
         "source_concepts_policy_sha256"
     ].startswith("d14282e8")
@@ -125,6 +145,8 @@ def test_us_contract_and_cli_do_not_advertise_cn_bounded_profile(
     payload = json.loads(capsys.readouterr().out)
     assert "bounded_ranking_v1" not in payload["prompt_profiles"]
     assert "bounded_ranking_v2" not in payload["prompt_profiles"]
+    assert "bounded_ranking_v3" not in payload["prompt_profiles"]
+    assert "risk_veto_v1" not in payload["prompt_profiles"]
 
     parser = create_parser()
     with pytest.raises(SystemExit):

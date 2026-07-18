@@ -45,6 +45,12 @@ from stock_analysis.ai_lab.shadow_campaign import (
     finalize_shadow_day,
     run_shadow_day,
 )
+from stock_analysis.ai_lab.shadow_lineage import (
+    load_shadow_decision_plan,
+    load_shadow_launch_receipt,
+    write_shadow_decision_plan,
+    write_shadow_launch_receipt,
+)
 from stock_analysis.ai_lab.shadow_validation import (
     validate_shadow_campaign,
     validate_shadow_day,
@@ -55,8 +61,27 @@ _CN_PROMPT_PROFILES = (
     "ranking_only_v1",
     "bounded_ranking_v1",
     "bounded_ranking_v2",
+    "bounded_ranking_v3",
+    "risk_veto_v1",
 )
 _US_PROMPT_PROFILES = ("production_v4", "ranking_only_v1")
+_SUPPORTED_COMMANDS = frozenset(
+    {
+        "contract-info",
+        "pick",
+        "pick-plan",
+        "shadow-decision-plan",
+        "shadow-day",
+        "shadow-launch-receipt",
+        "shadow-watchdog",
+        "stability-plan",
+        "trial",
+        "validate",
+        "validate-evidence",
+        "validate-shadow-campaign",
+        "validate-shadow-day",
+    }
+)
 
 
 def create_parser() -> argparse.ArgumentParser:
@@ -188,11 +213,12 @@ def _add_secondary_market_commands(
     trial.add_argument("--timeout", type=float, default=120.0)
     trial.add_argument("--credential-file")
     if market == "cn":
+        _add_shadow_lineage_parsers(commands)
         _add_shadow_run_parser(commands, "shadow-day", watchdog=False)
         _add_shadow_run_parser(commands, "shadow-watchdog", watchdog=True)
         shadow_day = commands.add_parser(
             "validate-shadow-day",
-            help="Validate one append-only v2 shadow model/date partition",
+            help="Validate one append-only owner shadow model/date partition",
         )
         shadow_day.add_argument("--day-dir", required=True)
         shadow_campaign = commands.add_parser(
@@ -211,24 +237,50 @@ def _add_shadow_run_parser(
     parser = commands.add_parser(
         name,
         help=(
-            "Terminalize missing v2 shadow repetitions without network calls"
+            "Terminalize missing owner shadow repetitions without network calls"
             if watchdog
-            else "Run one post-close three-repetition v2 shadow model/date"
+            else "Run one post-close three-repetition owner shadow model/date"
         ),
     )
-    parser.add_argument("--plan", required=True, help="Frozen bounded v2 plan.json")
+    parser.add_argument("--plan", required=True, help="Frozen owner shadow plan.json")
     parser.add_argument("--campaign-id", required=True)
     parser.add_argument("--signal-date", required=True)
     parser.add_argument("--output-root", required=True)
-    parser.add_argument("--provider", choices=("deepseek", "openai"), required=True)
-    parser.add_argument("--model", required=True)
-    parser.add_argument("--max-output-tokens", type=int, default=8192)
-    parser.add_argument(
-        "--thinking", choices=("enabled", "disabled"), default="disabled"
-    )
+    parser.add_argument("--decision-plan")
+    parser.add_argument("--launch-receipt")
+    parser.add_argument("--provider", choices=("deepseek", "openai"))
+    parser.add_argument("--model")
+    parser.add_argument("--max-output-tokens", type=int)
+    parser.add_argument("--thinking", choices=("enabled", "disabled"))
     parser.add_argument("--reasoning-effort", choices=("high", "max"))
     if not watchdog:
         parser.add_argument("--timeout", type=float, default=120.0)
+
+
+def _add_shadow_lineage_parsers(
+    commands: argparse._SubParsersAction[argparse.ArgumentParser],
+) -> None:
+    decision = commands.add_parser(
+        "shadow-decision-plan",
+        help="Freeze one provider-neutral Prompt .8 shadow decision",
+    )
+    decision.add_argument("--plan", required=True)
+    decision.add_argument("--campaign-id", required=True)
+    decision.add_argument("--signal-date", required=True)
+    decision.add_argument("--output-dir", required=True)
+    receipt = commands.add_parser(
+        "shadow-launch-receipt",
+        help="Freeze provider/model authorization for one shadow decision",
+    )
+    receipt.add_argument("--decision-plan", required=True)
+    receipt.add_argument("--output-dir", required=True)
+    receipt.add_argument("--provider", choices=("deepseek", "openai"), required=True)
+    receipt.add_argument("--model", required=True)
+    receipt.add_argument("--max-output-tokens", type=int, default=8192)
+    receipt.add_argument(
+        "--thinking", choices=("enabled", "disabled"), default="disabled"
+    )
+    receipt.add_argument("--reasoning-effort", choices=("high", "max"))
 
 
 def _add_deepseek_inference_arguments(parser: argparse.ArgumentParser) -> None:
@@ -277,19 +329,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.market is None:
         parser.print_help()
         return 0
-    if args.command not in {
-        "contract-info",
-        "pick",
-        "pick-plan",
-        "shadow-day",
-        "shadow-watchdog",
-        "stability-plan",
-        "trial",
-        "validate",
-        "validate-evidence",
-        "validate-shadow-campaign",
-        "validate-shadow-day",
-    }:
+    if args.command not in _SUPPORTED_COMMANDS:
         parser.parse_args([args.market, "--help"])
         return 0
 
@@ -321,6 +361,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             )
             return 0
+        if args.command in {"shadow-decision-plan", "shadow-launch-receipt"}:
+            return _shadow_lineage_command(args, market)
         if args.command in {"shadow-day", "shadow-watchdog"}:
             return _shadow_run_command(args, market)
         if args.command == "validate":
@@ -394,17 +436,42 @@ def _build_cli_plan(args: argparse.Namespace, market: Market) -> SelectionPlan:
 
 def _shadow_run_command(args: argparse.Namespace, market: Market) -> int:
     if market != "CN":
-        raise ValueError("v2 shadow campaigns are CN research-only")
+        raise ValueError("owner shadow campaigns are CN research-only")
     plan = load_trial_plan(args.plan)
     if plan.market != market:
         raise ValueError("shadow plan market does not match CLI market")
-    shadow_model = ShadowModel(
-        provider=args.provider,
-        model=args.model,
-        max_output_tokens=args.max_output_tokens,
-        thinking=args.thinking,
-        reasoning_effort=args.reasoning_effort,
-    )
+    has_decision = args.decision_plan is not None
+    has_receipt = args.launch_receipt is not None
+    if has_decision != has_receipt:
+        raise ValueError("supply both --decision-plan and --launch-receipt")
+    if has_decision:
+        if any(
+            value is not None
+            for value in (
+                args.provider,
+                args.model,
+                args.max_output_tokens,
+                args.thinking,
+                args.reasoning_effort,
+            )
+        ):
+            raise ValueError(
+                "provider/model parameters must come only from --launch-receipt"
+            )
+        shadow_model = None
+    else:
+        if args.provider is None or args.model is None:
+            raise ValueError(
+                "legacy shadow requires both --provider and --model; Prompt .8 "
+                "requires decision plan and launch receipt"
+            )
+        shadow_model = ShadowModel(
+            provider=args.provider,
+            model=args.model,
+            max_output_tokens=args.max_output_tokens or 8192,
+            thinking=args.thinking or "disabled",
+            reasoning_effort=args.reasoning_effort,
+        )
     signal_date = parse_date(args.signal_date)
     result = (
         finalize_shadow_day(
@@ -413,6 +480,8 @@ def _shadow_run_command(args: argparse.Namespace, market: Market) -> int:
             campaign_id=args.campaign_id,
             signal_date=signal_date,
             shadow_model=shadow_model,
+            decision_plan=args.decision_plan,
+            launch_receipt=args.launch_receipt,
         )
         if args.command == "shadow-watchdog"
         else run_shadow_day(
@@ -421,6 +490,8 @@ def _shadow_run_command(args: argparse.Namespace, market: Market) -> int:
             campaign_id=args.campaign_id,
             signal_date=signal_date,
             shadow_model=shadow_model,
+            decision_plan=args.decision_plan,
+            launch_receipt=args.launch_receipt,
             timeout=args.timeout,
         )
     )
@@ -438,6 +509,47 @@ def _shadow_run_command(args: argparse.Namespace, market: Market) -> int:
     return 0
 
 
+def _shadow_lineage_command(args: argparse.Namespace, market: Market) -> int:
+    if market != "CN":
+        raise ValueError("shadow lineage is CN research-only")
+    if args.command == "shadow-decision-plan":
+        plan = load_trial_plan(args.plan)
+        if plan.market != market:
+            raise ValueError("shadow plan market does not match CLI market")
+        path = write_shadow_decision_plan(
+            plan,
+            args.output_dir,
+            campaign_id=args.campaign_id,
+            signal_date=parse_date(args.signal_date),
+        )
+        decision = load_shadow_decision_plan(path)
+        payload = {
+            "artifact_type": "ai_shadow_decision_plan",
+            "path": str(path),
+            "decision_plan_sha256": decision.decision_plan_sha256,
+        }
+    else:
+        path = write_shadow_launch_receipt(
+            args.decision_plan,
+            args.output_dir,
+            provider=args.provider,
+            model=args.model,
+            max_output_tokens=args.max_output_tokens,
+            thinking=args.thinking,
+            reasoning_effort=args.reasoning_effort,
+        )
+        receipt = load_shadow_launch_receipt(path)
+        payload = {
+            "artifact_type": "ai_shadow_launch_receipt",
+            "path": str(path),
+            "decision_plan_sha256": receipt.decision_plan_sha256,
+            "launch_receipt_sha256": receipt.launch_receipt_sha256,
+            "model_partition": receipt.model_partition,
+        }
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
 def _dry_run_payload(
     plan: SelectionPlan, args: argparse.Namespace
 ) -> dict[str, object]:
@@ -451,7 +563,7 @@ def _dry_run_payload(
         "style": plan.style,
         "prompt_profile": plan.prompt_profile,
         "prompt_version": plan.prompt_version,
-        **plan.ranking_policy_fields,
+        **plan.decision_policy_fields,
         "as_of": plan.universe.selection_as_of.isoformat(),
         "candidate_observation_date": (
             observation_date.isoformat() if observation_date is not None else None

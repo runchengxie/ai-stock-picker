@@ -56,23 +56,31 @@ uv run aipick cn validate-evidence \
 
 目录缺少清单、文件哈希不符或出现未登记文件时，校验会失败。
 
-## bounded v2 append-only shadow
+## `.8` append-only prospective shadow
 
-单日 shadow 只接受冻结的 `bounded_ranking_v2 / 2026-07-17.7` plan，并要求上海市场
-信号日 16:00 之后启动。每个模型固定三次 repetition，目录为：
+`bounded_ranking_v3 / 2026-07-18.8` 与 `risk_veto_v1 / 2026-07-18.8`
+要求先冻结 provider-neutral `ai_shadow_decision_plan`，再发布 provider-specific
+`ai_shadow_launch_receipt`。decision plan 绑定 campaign/date/arm、Prompt、candidate、
+Numeric ranking 和 policy；receipt 绑定 decision digest、provider、model 与推理参数。
+runner 从 receipt 唯一派生 model partition，并要求上海市场信号日 16:00 之后执行。
+每个模型固定三次 repetition，目录为：
 
 ```text
-campaign/provider--model/YYYY-MM-DD/repetition-01
-campaign/provider--model/YYYY-MM-DD/repetition-02
-campaign/provider--model/YYYY-MM-DD/repetition-03
-campaign/provider--model/YYYY-MM-DD/consensus
+campaign/arm/provider--model/YYYY-MM-DD/repetition-01
+campaign/arm/provider--model/YYYY-MM-DD/repetition-02
+campaign/arm/provider--model/YYYY-MM-DD/repetition-03
+campaign/arm/provider--model/YYYY-MM-DD/consensus
 ```
 
 排序合同通过即可成为 complete repetition；发布文案失败仍保留 hash-indexed
 `ranking.json` 并参与共识。排序失败、拒答或调用失败写 tombstone。共识至少需要两次有效
-结果，固定 Numeric Top7，仅对三个边界名称按票数、Borda 积分、中位顺序、symbol 依次
-破同分。有效次数不足时 consensus 写 tombstone，校验输出同时给出冻结 Numeric Top10
+结果；bounded arm 固定 Numeric Top7，最终三只边界名称必须各至少两票；risk-veto arm
+要求完全相同的单一 veto 决策至少两票，并由程序用 Numeric reserve 替补。有效次数不足或
+没有真实多数时 consensus 写 tombstone，校验输出同时给出冻结 Numeric Top10
 fallback，但不会把失败日期从样本中删除。
+
+历史 `bounded_ranking_v2 / 2026-07-17.7`、旧 model/date 目录和 Borda 共识继续按原始
+`1.0.0` 合同验证；新 runner 不会改变历史 artifact 语义。
 
 每个终态 bundle 先写入 output root 下的隔离 staging，文件和目录 fsync 后再原子 rename
 到最终分区。发布前中断只会留下不参与 campaign 校验的 staging 残片，watchdog 仍可对
@@ -81,8 +89,16 @@ fallback，但不会把失败日期从样本中删除。
 style、top_n、Prompt 版本和输入合同，并要求同一交易日各模型读取同一冻结输入。
 
 OpenAI adapter 使用 Responses API 的 `text.format` strict JSON Schema、`store=false`，
-并保存请求模型、响应实际模型、refusal、usage 和原始响应。当前 runner 不包含进程调度、
-交易所日历或 outcome maturer；这些由外部 control plane 安排。
+并保存请求模型、响应实际模型、refusal、usage 和原始响应。每个 prospective repetition
+内嵌相同的 decision plan/launch receipt bytes；manifest 和 validator summary 暴露
+`decision_plan_sha256`、`launch_receipt_sha256` 与 `evidence_status=prospective_bound`。
+任一内容哈希、provider/model、campaign/date/arm、Prompt 或 candidate 绑定不一致都会失败。
+没有 receipt 的既有 cosplay 只能标为 `legacy_unbound`；标准 `.8` 路径缺少任一工件时在
+网络调用前 fail closed。交易日 registry 和整日 watchdog 仍由外部 control plane 负责。
+历史 `1.1.0` manifest 若三个 lineage 字段全部缺失，也只读归类为 `legacy_unbound`；
+字段只出现一部分则视为损坏并拒绝。
+`prospective_bound` 只证明启动血缘完整；在上游仍声明 `strict_point_in_time=false` 时，
+artifact 继续是 `research_only`，不会自动升级为可晋级的 OOS alpha 证据。
 
 ## 冻结 production 选择计划
 

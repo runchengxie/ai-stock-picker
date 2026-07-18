@@ -9,6 +9,10 @@ BOUNDED_RANKING_PROMPT_VERSION: Literal["2026-07-17.2"] = "2026-07-17.2"
 BOUNDED_RANKING_PROFILE: Literal["bounded_ranking_v1"] = "bounded_ranking_v1"
 BOUNDED_RANKING_V2_PROMPT_VERSION: Literal["2026-07-17.7"] = "2026-07-17.7"
 BOUNDED_RANKING_V2_PROFILE: Literal["bounded_ranking_v2"] = "bounded_ranking_v2"
+BOUNDED_RANKING_V3_PROMPT_VERSION: Literal["2026-07-18.8"] = "2026-07-18.8"
+BOUNDED_RANKING_V3_PROFILE: Literal["bounded_ranking_v3"] = "bounded_ranking_v3"
+RISK_VETO_PROMPT_VERSION: Literal["2026-07-18.8"] = "2026-07-18.8"
+RISK_VETO_PROFILE: Literal["risk_veto_v1"] = "risk_veto_v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -44,6 +48,33 @@ class BoundedRankingPolicy:
         }
 
 
+@dataclass(frozen=True, slots=True)
+class RiskVetoPolicy:
+    """Immutable Numeric Top10 risk-veto and deterministic replacement policy."""
+
+    schema_version: str
+    policy_id: str
+    selected_count: int
+    reserve_start_rank: int
+    reserve_end_rank: int
+    max_veto_count: int
+    replacement_method: str
+    selection_limitation: str
+
+    def contract_record(self) -> dict[str, object]:
+        """Return the static machine-readable risk-veto policy contract."""
+
+        return {
+            "schema_version": self.schema_version,
+            "policy_id": self.policy_id,
+            "selected_count": self.selected_count,
+            "reserve_start_rank": self.reserve_start_rank,
+            "reserve_end_rank": self.reserve_end_rank,
+            "max_veto_count": self.max_veto_count,
+            "replacement_method": self.replacement_method,
+        }
+
+
 BOUNDED_RANKING_POLICY = BoundedRankingPolicy(
     schema_version="1.0.0",
     policy_id="numeric_top7_boundary8_15_select3_v1",
@@ -72,6 +103,31 @@ BOUNDED_RANKING_V2_POLICY = BoundedRankingPolicy(
     selection_limitation="bounded_ranking_policy_v2_research_only",
 )
 
+BOUNDED_RANKING_V3_POLICY = BoundedRankingPolicy(
+    schema_version="1.0.0",
+    policy_id="numeric_top7_boundary8_15_select3_uniform_band_v3",
+    locked_prefix_count=7,
+    boundary_start_rank=8,
+    boundary_end_rank=15,
+    boundary_selection_count=3,
+    required_output_count=10,
+    score_representation="uniform_anonymous_boundary_band_v1",
+    hidden_exact_fields=("numeric_rank", "score", "relevance"),
+    presentation_order_method="sha256_input_policy_symbol_v1",
+    selection_limitation="bounded_ranking_policy_v3_research_only",
+)
+
+RISK_VETO_POLICY = RiskVetoPolicy(
+    schema_version="1.0.0",
+    policy_id="numeric_top10_single_risk_veto_reserve11_15_v1",
+    selected_count=10,
+    reserve_start_rank=11,
+    reserve_end_rank=15,
+    max_veto_count=1,
+    replacement_method="next_numeric_reserve_v1",
+    selection_limitation="risk_veto_policy_v1_research_only",
+)
+
 
 __all__ = [
     "BOUNDED_RANKING_POLICY",
@@ -80,5 +136,12 @@ __all__ = [
     "BOUNDED_RANKING_V2_POLICY",
     "BOUNDED_RANKING_V2_PROFILE",
     "BOUNDED_RANKING_V2_PROMPT_VERSION",
+    "BOUNDED_RANKING_V3_POLICY",
+    "BOUNDED_RANKING_V3_PROFILE",
+    "BOUNDED_RANKING_V3_PROMPT_VERSION",
     "BoundedRankingPolicy",
+    "RISK_VETO_POLICY",
+    "RISK_VETO_PROFILE",
+    "RISK_VETO_PROMPT_VERSION",
+    "RiskVetoPolicy",
 ]

@@ -1,4 +1,4 @@
-"""Append-only bounded-ranking v2 shadow repetitions and deterministic consensus."""
+"""Append-only owner shadow repetitions and deterministic consensus."""
 
 from __future__ import annotations
 
@@ -13,39 +13,57 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timezone
 from hashlib import sha256
 from pathlib import Path
-from statistics import median
 from typing import Literal, cast
 from zoneinfo import ZoneInfo
 
 from .bundle_paths import safe_bundle_path
 from .contracts import (
-    SHADOW_CAMPAIGN_SCHEMA_VERSION,
     SHADOW_MIN_VALID_REPETITIONS,
     SHADOW_REPETITION_NAMES,
     SHADOW_REPETITIONS,
     SHADOW_TOMBSTONE_REASONS,
-    RankingModelSelection,
 )
 from .evidence_consistency import numeric_ranking_bytes
 from .evidence_contracts import ranking_diagnostic_bytes, selection_contracts
 from .providers import (
     ProviderError,
     ProviderExchange,
-    ReasoningEffort,
-    ThinkingMode,
     call_deepseek_exchange,
     call_openai_responses_exchange,
 )
-from .ranking_policy import policy_partitions
 from .ranking_policy_contract import (
     BOUNDED_RANKING_V2_POLICY,
     BOUNDED_RANKING_V2_PROMPT_VERSION,
+    BOUNDED_RANKING_V3_POLICY,
+    BOUNDED_RANKING_V3_PROMPT_VERSION,
+    RISK_VETO_POLICY,
+    RISK_VETO_PROMPT_VERSION,
 )
 from .selection import SelectionPlan, read_plan_candidate_snapshot
+from .shadow_contract import (
+    RiskDecision,
+    ShadowArm,
+    bounded_consensus_payload,
+    parse_shadow_response,
+    risk_decision_payload,
+    risk_veto_consensus_payload,
+    shadow_arm_for_profile,
+    shadow_response_schema,
+    shadow_response_schema_name,
+    shadow_schema_for_profile,
+)
 from .shadow_exchange_validation import validate_shadow_exchange
+from .shadow_lineage import (
+    ShadowDecisionPlan,
+    ShadowLaunchBinding,
+    ShadowLaunchReceipt,
+    ShadowModel,
+    resolve_shadow_launch_binding,
+    validate_shadow_launch_time,
+)
 from .shadow_validation import (
     read_shadow_ranking,
-    validate_shadow_campaign,
+    read_shadow_risk_decision,
     validate_shadow_day,
     validate_shadow_repetition,
 )
@@ -55,59 +73,8 @@ RepetitionStatus = Literal["complete", "tombstone"]
 ShadowCaller = Callable[[SelectionPlan, "ShadowModel", int, float], ProviderExchange]
 
 _IDENTIFIER = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
-_MODEL = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
 _STAGING_DIRECTORY = ".ai-stock-picker-shadow-staging"
-
-
-@dataclass(frozen=True, slots=True)
-class ShadowModel:
-    """Frozen research-provider parameters for one campaign model partition."""
-
-    provider: ShadowProvider
-    model: str
-    max_output_tokens: int = 8_192
-    thinking: ThinkingMode = "disabled"
-    reasoning_effort: ReasoningEffort | None = None
-
-    def __post_init__(self) -> None:
-        if self.provider not in {"deepseek", "openai"}:
-            raise ValueError("shadow provider must be deepseek or openai")
-        if _MODEL.fullmatch(self.model) is None:
-            raise ValueError("shadow model contains unsupported characters")
-        if isinstance(self.max_output_tokens, bool) or not isinstance(
-            self.max_output_tokens, int
-        ):
-            raise ValueError("shadow max_output_tokens must be an integer")
-        if not 1 <= self.max_output_tokens <= 65_536:
-            raise ValueError("shadow max_output_tokens must be between 1 and 65536")
-        if self.provider == "openai" and (
-            self.thinking != "disabled" or self.reasoning_effort is not None
-        ):
-            raise ValueError("OpenAI shadow does not accept DeepSeek thinking fields")
-        if self.provider == "deepseek":
-            if self.thinking == "enabled" and self.reasoning_effort not in {
-                "high",
-                "max",
-            }:
-                raise ValueError("DeepSeek thinking requires high or max effort")
-            if self.thinking == "disabled" and self.reasoning_effort is not None:
-                raise ValueError("DeepSeek reasoning_effort requires thinking enabled")
-
-    @property
-    def partition(self) -> str:
-        return f"{self.provider}--{self.model}"
-
-    def contract_record(self) -> dict[str, object]:
-        return {
-            "provider": self.provider,
-            "model": self.model,
-            "max_output_tokens": self.max_output_tokens,
-            "thinking": self.thinking if self.provider == "deepseek" else None,
-            "reasoning_effort": (
-                self.reasoning_effort if self.provider == "deepseek" else None
-            ),
-        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,13 +90,24 @@ def run_shadow_day(
     *,
     campaign_id: str,
     signal_date: date,
-    shadow_model: ShadowModel,
+    shadow_model: ShadowModel | None = None,
+    decision_plan: ShadowDecisionPlan | str | Path | None = None,
+    launch_receipt: ShadowLaunchReceipt | str | Path | None = None,
     generated_at: datetime | None = None,
     timeout: float = 120,
     caller: ShadowCaller | None = None,
 ) -> ShadowDayResult:
     """Execute exactly three repetitions and terminalize every expected unit."""
 
+    shadow_model, launch_binding = resolve_shadow_launch_binding(
+        plan,
+        campaign_id=campaign_id,
+        signal_date=signal_date,
+        shadow_model=shadow_model,
+        decision_plan=decision_plan,
+        launch_receipt=launch_receipt,
+        require_bound=caller is None,
+    )
     created = _validate_run(
         plan,
         campaign_id=campaign_id,
@@ -137,11 +115,17 @@ def run_shadow_day(
         generated_at=generated_at,
         timeout=timeout,
     )
+    validate_shadow_launch_time(launch_binding, created)
     day_root = shadow_day_path(
         output_root,
         campaign_id=campaign_id,
         signal_date=signal_date,
         shadow_model=shadow_model,
+        arm=(
+            None
+            if plan.prompt_profile == "bounded_ranking_v2"
+            else shadow_arm_for_profile(plan.prompt_profile)
+        ),
     )
     if day_root.exists() or day_root.is_symlink():
         raise FileExistsError(
@@ -162,6 +146,8 @@ def run_shadow_day(
                     prompt=plan.prompt,
                     provider=shadow_model.provider,
                     model_parameters=shadow_model.contract_record(),
+                    response_schema=shadow_response_schema(plan),
+                    response_schema_name=shadow_response_schema_name(plan),
                 )
             except (OSError, ProviderError, TimeoutError, ValueError):
                 exchange = None
@@ -178,6 +164,7 @@ def run_shadow_day(
             generated_at=created,
             exchange=exchange,
             tombstone_reason=tombstone_reason,
+            launch_binding=launch_binding,
         )
         statuses.append(status)
     consensus = _write_consensus(
@@ -187,6 +174,7 @@ def run_shadow_day(
         signal_date=signal_date,
         shadow_model=shadow_model,
         generated_at=created,
+        launch_binding=launch_binding,
     )
     validate_shadow_day(day_root)
     return ShadowDayResult(day_root, tuple(statuses), consensus)
@@ -198,11 +186,22 @@ def finalize_shadow_day(
     *,
     campaign_id: str,
     signal_date: date,
-    shadow_model: ShadowModel,
+    shadow_model: ShadowModel | None = None,
+    decision_plan: ShadowDecisionPlan | str | Path | None = None,
+    launch_receipt: ShadowLaunchReceipt | str | Path | None = None,
     generated_at: datetime | None = None,
 ) -> ShadowDayResult:
     """Watchdog-terminalize missing repetitions without making provider calls."""
 
+    shadow_model, launch_binding = resolve_shadow_launch_binding(
+        plan,
+        campaign_id=campaign_id,
+        signal_date=signal_date,
+        shadow_model=shadow_model,
+        decision_plan=decision_plan,
+        launch_receipt=launch_receipt,
+        require_bound=True,
+    )
     created = _validate_run(
         plan,
         campaign_id=campaign_id,
@@ -210,11 +209,17 @@ def finalize_shadow_day(
         generated_at=generated_at,
         timeout=1.0,
     )
+    validate_shadow_launch_time(launch_binding, created)
     day_root = shadow_day_path(
         output_root,
         campaign_id=campaign_id,
         signal_date=signal_date,
         shadow_model=shadow_model,
+        arm=(
+            None
+            if plan.prompt_profile == "bounded_ranking_v2"
+            else shadow_arm_for_profile(plan.prompt_profile)
+        ),
     )
     consensus_root = day_root / "consensus"
     if consensus_root.exists() or consensus_root.is_symlink():
@@ -243,6 +248,7 @@ def finalize_shadow_day(
                 generated_at=created,
                 exchange=None,
                 tombstone_reason="watchdog_missing_repetition",
+                launch_binding=launch_binding,
             )
         )
     consensus = _write_consensus(
@@ -252,6 +258,7 @@ def finalize_shadow_day(
         signal_date=signal_date,
         shadow_model=shadow_model,
         generated_at=created,
+        launch_binding=launch_binding,
     )
     validate_shadow_day(day_root)
     return ShadowDayResult(day_root, tuple(statuses), consensus)
@@ -263,12 +270,16 @@ def shadow_day_path(
     campaign_id: str,
     signal_date: date,
     shadow_model: ShadowModel,
+    arm: ShadowArm | None = None,
 ) -> Path:
     """Resolve the owner-defined campaign/model/date partition."""
 
     _validate_identifier(campaign_id, "campaign_id")
     root = Path(output_root).expanduser().resolve()
-    return root / campaign_id / shadow_model.partition / signal_date.isoformat()
+    base = root / campaign_id
+    if arm is not None:
+        base /= arm
+    return base / shadow_model.partition / signal_date.isoformat()
 
 
 def call_shadow_provider(
@@ -283,7 +294,8 @@ def call_shadow_provider(
     if shadow_model.provider == "openai":
         return call_openai_responses_exchange(
             plan.prompt,
-            response_schema=RankingModelSelection.model_json_schema(),
+            response_schema=shadow_response_schema(plan),
+            response_schema_name=shadow_response_schema_name(plan),
             model=shadow_model.model,
             max_output_tokens=shadow_model.max_output_tokens,
             timeout=timeout,
@@ -308,12 +320,28 @@ def _validate_run(
     timeout: float,
 ) -> datetime:
     _validate_identifier(campaign_id, "campaign_id")
-    if plan.market != "CN" or plan.prompt_profile != "bounded_ranking_v2":
-        raise ValueError("shadow campaign requires a CN bounded_ranking_v2 plan")
-    if plan.prompt_version != BOUNDED_RANKING_V2_PROMPT_VERSION:
-        raise ValueError("shadow campaign prompt version is not the owner .7 contract")
-    if plan.ranking_policy != BOUNDED_RANKING_V2_POLICY:
-        raise ValueError("shadow campaign ranking policy is inconsistent")
+    if plan.market != "CN":
+        raise ValueError("shadow campaign requires a CN research plan")
+    expected = {
+        "bounded_ranking_v2": (
+            BOUNDED_RANKING_V2_PROMPT_VERSION,
+            BOUNDED_RANKING_V2_POLICY,
+            None,
+        ),
+        "bounded_ranking_v3": (
+            BOUNDED_RANKING_V3_PROMPT_VERSION,
+            BOUNDED_RANKING_V3_POLICY,
+            None,
+        ),
+        "risk_veto_v1": (RISK_VETO_PROMPT_VERSION, None, RISK_VETO_POLICY),
+    }.get(plan.prompt_profile)
+    if expected is None:
+        raise ValueError("shadow campaign requires a supported owner shadow profile")
+    expected_version, ranking_policy, risk_policy = expected
+    if plan.prompt_version != expected_version:
+        raise ValueError("shadow campaign prompt version is not the owner contract")
+    if plan.ranking_policy != ranking_policy or plan.risk_veto_policy != risk_policy:
+        raise ValueError("shadow campaign decision policy is inconsistent")
     if plan.symbol_aliases or plan.name_aliases:
         raise ValueError("shadow campaign does not accept identity aliases")
     if plan.plan_sha256 is None or _SHA256.fullmatch(plan.plan_sha256) is None:
@@ -353,43 +381,117 @@ def _write_repetition(
     generated_at: datetime,
     exchange: ProviderExchange | None,
     tombstone_reason: str | None = None,
+    launch_binding: ShadowLaunchBinding | None = None,
 ) -> RepetitionStatus:
-    files = _repetition_files(plan, exchange)
-    contracts = {
-        "transport_contract": "failed",
-        "ranking_contract": "not_evaluated",
-        "publication_contract": "not_evaluated",
-    }
+    files = _repetition_files(plan, exchange, launch_binding)
     ranking: bytes | None = None
+    decision: bytes | None = None
+    if shadow_arm_for_profile(plan.prompt_profile) == "risk_veto":
+        contracts = {
+            "transport_contract": "failed",
+            "ranking_contract": "not_evaluated",
+            "decision_contract": "not_evaluated",
+            "publication_contract": "not_applicable",
+        }
+    else:
+        contracts = {
+            "transport_contract": "failed",
+            "ranking_contract": "not_evaluated",
+            "publication_contract": "not_evaluated",
+        }
     if exchange is not None and tombstone_reason is None:
-        contracts, diagnostic = selection_contracts(
-            plan, exchange, generated_at=generated_at
-        )
-        if contracts["ranking_contract"] == "passed":
-            ranking = diagnostic or ranking_diagnostic_bytes(
-                _ranking_from_response(plan, exchange)
+        if shadow_arm_for_profile(plan.prompt_profile) == "risk_veto":
+            if exchange.response_text is None:
+                tombstone_reason = "transport_contract_failed"
+            else:
+                contracts["transport_contract"] = "passed"
+                try:
+                    kind, parsed = parse_shadow_response(plan, exchange.response_text)
+                    if kind != "risk_veto" or not isinstance(parsed, tuple):
+                        raise ValueError("risk-veto response parser returned wrong arm")
+                    risk = cast(RiskDecision, parsed)
+                except ValueError:
+                    contracts["decision_contract"] = "failed"
+                    tombstone_reason = "decision_contract_failed"
+                else:
+                    contracts["decision_contract"] = "passed"
+                    decision = _json_bytes(risk_decision_payload(risk))
+                    files["decision.json"] = decision
+        else:
+            contracts, diagnostic = selection_contracts(
+                plan, exchange, generated_at=generated_at
             )
-            files["ranking.json"] = ranking
-        elif tombstone_reason is None:
-            tombstone_reason = (
-                "transport_contract_failed"
-                if contracts["transport_contract"] == "failed"
-                else "ranking_contract_failed"
-            )
-    status: RepetitionStatus = (
-        "complete" if contracts["ranking_contract"] == "passed" else "tombstone"
+            if contracts["ranking_contract"] == "passed":
+                ranking = diagnostic or ranking_diagnostic_bytes(
+                    _ranking_from_response(plan, exchange)
+                )
+                files["ranking.json"] = ranking
+            elif tombstone_reason is None:
+                tombstone_reason = (
+                    "transport_contract_failed"
+                    if contracts["transport_contract"] == "failed"
+                    else "ranking_contract_failed"
+                )
+    passed = (
+        contracts.get("decision_contract") == "passed"
+        if shadow_arm_for_profile(plan.prompt_profile) == "risk_veto"
+        else contracts["ranking_contract"] == "passed"
     )
+    status: RepetitionStatus = "complete" if passed else "tombstone"
     if status == "tombstone":
-        tombstone_reason = tombstone_reason or "ranking_contract_failed"
+        tombstone_reason = tombstone_reason or (
+            "decision_contract_failed"
+            if shadow_arm_for_profile(plan.prompt_profile) == "risk_veto"
+            else "ranking_contract_failed"
+        )
         _validate_tombstone_reason(tombstone_reason)
     else:
         tombstone_reason = None
+    manifest = _repetition_manifest(
+        plan,
+        campaign_id=campaign_id,
+        signal_date=signal_date,
+        shadow_model=shadow_model,
+        repetition=repetition,
+        generated_at=generated_at,
+        status=status,
+        contracts=contracts,
+        ranking=ranking,
+        decision=decision,
+        tombstone_reason=tombstone_reason,
+        exchange=exchange,
+        files=files,
+        launch_binding=launch_binding,
+    )
+    _write_bundle(output_dir, files, manifest)
+    validate_shadow_repetition(output_dir)
+    return status
+
+
+def _repetition_manifest(
+    plan: SelectionPlan,
+    *,
+    campaign_id: str,
+    signal_date: date,
+    shadow_model: ShadowModel,
+    repetition: int,
+    generated_at: datetime,
+    status: RepetitionStatus,
+    contracts: Mapping[str, str],
+    ranking: bytes | None,
+    decision: bytes | None,
+    tombstone_reason: str | None,
+    exchange: ProviderExchange | None,
+    files: Mapping[str, bytes],
+    launch_binding: ShadowLaunchBinding | None,
+) -> dict[str, object]:
     manifest = _common_manifest(
         plan,
         campaign_id=campaign_id,
         signal_date=signal_date,
         shadow_model=shadow_model,
         generated_at=generated_at,
+        launch_binding=launch_binding,
     )
     manifest.update(
         {
@@ -409,9 +511,9 @@ def _write_repetition(
             "files": _file_records(files),
         }
     )
-    _write_bundle(output_dir, files, manifest)
-    validate_shadow_repetition(output_dir)
-    return status
+    if shadow_arm_for_profile(plan.prompt_profile) == "risk_veto":
+        manifest["decision_path"] = "decision.json" if decision is not None else None
+    return manifest
 
 
 def _ranking_from_response(
@@ -425,7 +527,9 @@ def _ranking_from_response(
 
 
 def _repetition_files(
-    plan: SelectionPlan, exchange: ProviderExchange | None
+    plan: SelectionPlan,
+    exchange: ProviderExchange | None,
+    launch_binding: ShadowLaunchBinding | None,
 ) -> dict[str, bytes]:
     candidate_name = f"candidate_input{plan.universe.path.suffix.lower()}"
     files = {
@@ -433,6 +537,13 @@ def _repetition_files(
         "numeric_ranking.json": numeric_ranking_bytes(plan),
         "prompt.txt": plan.prompt.encode(),
     }
+    if launch_binding is not None:
+        files.update(
+            {
+                "decision-plan.json": launch_binding.decision_plan.artifact_bytes,
+                "launch-receipt.json": launch_binding.launch_receipt.artifact_bytes,
+            }
+        )
     if exchange is None:
         return files
     envelope = {
@@ -460,9 +571,10 @@ def _common_manifest(
     signal_date: date,
     shadow_model: ShadowModel,
     generated_at: datetime,
+    launch_binding: ShadowLaunchBinding | None,
 ) -> dict[str, object]:
-    return {
-        "schema_version": SHADOW_CAMPAIGN_SCHEMA_VERSION,
+    manifest: dict[str, object] = {
+        "schema_version": shadow_schema_for_profile(plan.prompt_profile),
         "campaign_id": campaign_id,
         "signal_date": signal_date.isoformat(),
         "generated_at": generated_at.isoformat(),
@@ -491,11 +603,35 @@ def _common_manifest(
         "input_contract": plan.universe.input_contract,
         "input_sha256": plan.universe.input_sha256,
         "candidate_symbols_sha256": plan.universe.candidate_symbols_sha256,
-        "ranking_policy": plan.ranking_policy_record,
         "strict_point_in_time": False,
         "eligible_as_oos_evidence": False,
         "research_only": True,
     }
+    if plan.prompt_profile == "bounded_ranking_v2":
+        manifest["ranking_policy"] = plan.ranking_policy_record
+    else:
+        manifest.update(
+            {
+                "arm": shadow_arm_for_profile(plan.prompt_profile),
+                "evidence_status": (
+                    launch_binding.evidence_status
+                    if launch_binding is not None
+                    else "legacy_unbound"
+                ),
+                "decision_plan_sha256": (
+                    launch_binding.decision_plan.decision_plan_sha256
+                    if launch_binding is not None
+                    else None
+                ),
+                "launch_receipt_sha256": (
+                    launch_binding.launch_receipt.launch_receipt_sha256
+                    if launch_binding is not None
+                    else None
+                ),
+                **plan.decision_policy_fields,
+            }
+        )
+    return manifest
 
 
 def _write_consensus(
@@ -506,21 +642,40 @@ def _write_consensus(
     signal_date: date,
     shadow_model: ShadowModel,
     generated_at: datetime,
+    launch_binding: ShadowLaunchBinding | None,
 ) -> RepetitionStatus:
-    valid: list[tuple[int, tuple[str, ...]]] = []
+    arm = shadow_arm_for_profile(plan.prompt_profile)
+    valid_rankings: list[tuple[int, tuple[str, ...]]] = []
+    valid_decisions: list[tuple[int, RiskDecision]] = []
     for repetition, name in enumerate(SHADOW_REPETITION_NAMES, start=1):
         root = day_root / name
         manifest = validate_shadow_repetition(root)
         if manifest["status"] == "complete":
-            valid.append((repetition, read_shadow_ranking(root, manifest)))
+            if arm == "risk_veto":
+                valid_decisions.append(
+                    (repetition, read_shadow_risk_decision(root, manifest))
+                )
+            else:
+                valid_rankings.append((repetition, read_shadow_ranking(root, manifest)))
+    valid_repetitions = [
+        item[0] for item in (valid_decisions if arm == "risk_veto" else valid_rankings)
+    ]
     files: dict[str, bytes] = {}
     status: RepetitionStatus
     reason: str | None
-    if len(valid) >= SHADOW_MIN_VALID_REPETITIONS:
-        payload = _consensus_payload(plan, valid)
-        files["consensus.json"] = _json_bytes(payload)
-        status = "complete"
-        reason = None
+    if len(valid_repetitions) >= SHADOW_MIN_VALID_REPETITIONS:
+        payload = (
+            risk_veto_consensus_payload(plan, valid_decisions)
+            if arm == "risk_veto"
+            else bounded_consensus_payload(plan, valid_rankings)
+        )
+        if payload is None:
+            status = "tombstone"
+            reason = "insufficient_consensus_agreement"
+        else:
+            files["consensus.json"] = _json_bytes(payload)
+            status = "complete"
+            reason = None
     else:
         status = "tombstone"
         reason = "insufficient_valid_repetitions"
@@ -530,6 +685,7 @@ def _write_consensus(
         signal_date=signal_date,
         shadow_model=shadow_model,
         generated_at=generated_at,
+        launch_binding=launch_binding,
     )
     manifest.update(
         {
@@ -537,7 +693,7 @@ def _write_consensus(
             "status": status,
             "repetitions": SHADOW_REPETITIONS,
             "min_valid_repetitions": SHADOW_MIN_VALID_REPETITIONS,
-            "valid_repetitions": [item[0] for item in valid],
+            "valid_repetitions": valid_repetitions,
             "consensus_path": "consensus.json" if status == "complete" else None,
             "tombstone_reason": reason,
             "files": _file_records(files),
@@ -545,53 +701,6 @@ def _write_consensus(
     )
     _write_bundle(day_root / "consensus", files, manifest)
     return status
-
-
-def _consensus_payload(
-    plan: SelectionPlan, valid: list[tuple[int, tuple[str, ...]]]
-) -> dict[str, object]:
-    locked, _boundary = policy_partitions(plan.universe, BOUNDED_RANKING_V2_POLICY)
-    tallies: dict[str, dict[str, object]] = {}
-    for _repetition, symbols in valid:
-        if symbols[: len(locked)] != locked:
-            raise ValueError("valid repetition changed the locked Numeric prefix")
-        for boundary_order, symbol in enumerate(symbols[len(locked) :], start=1):
-            tally = tallies.setdefault(
-                symbol, {"votes": 0, "ranking_points": 0, "orders": []}
-            )
-            tally["votes"] = cast(int, tally["votes"]) + 1
-            tally["ranking_points"] = cast(int, tally["ranking_points"]) + (
-                4 - boundary_order
-            )
-            cast(list[int], tally["orders"]).append(boundary_order)
-    records = [
-        {
-            "symbol": symbol,
-            "votes": cast(int, tally["votes"]),
-            "ranking_points": cast(int, tally["ranking_points"]),
-            "median_order": float(median(cast(list[int], tally["orders"]))),
-        }
-        for symbol, tally in tallies.items()
-    ]
-    records.sort(
-        key=lambda item: (
-            -cast(int, item["votes"]),
-            -cast(int, item["ranking_points"]),
-            cast(float, item["median_order"]),
-            cast(str, item["symbol"]),
-        )
-    )
-    winners = tuple(cast(str, item["symbol"]) for item in records[:3])
-    return {
-        "schema_version": SHADOW_CAMPAIGN_SCHEMA_VERSION,
-        "artifact_type": "ai_shadow_consensus_ranking",
-        "method": "votes_then_borda_then_median_then_symbol_v1",
-        "valid_repetitions": [item[0] for item in valid],
-        "locked_prefix": list(locked),
-        "boundary_winners": list(winners),
-        "selected_symbols": [*locked, *winners],
-        "boundary_tallies": records,
-    }
 
 
 def _write_bundle(
@@ -602,7 +711,12 @@ def _write_bundle(
         raise FileExistsError(
             f"shadow partition already exists; refusing overwrite: {output_dir}"
         )
-    staging_parent = output_dir.parents[3] / _STAGING_DIRECTORY
+    has_arm_partition = output_dir.parents[2].name in {
+        "bounded_ranking",
+        "risk_veto",
+    }
+    output_root = output_dir.parents[4 if has_arm_partition else 3]
+    staging_parent = output_root / _STAGING_DIRECTORY
     if staging_parent.is_symlink():
         raise ValueError("shadow staging directory cannot be a symbolic link")
     staging_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -682,7 +796,4 @@ __all__ = [
     "finalize_shadow_day",
     "run_shadow_day",
     "shadow_day_path",
-    "validate_shadow_campaign",
-    "validate_shadow_day",
-    "validate_shadow_repetition",
 ]

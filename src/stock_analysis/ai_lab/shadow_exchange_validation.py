@@ -33,6 +33,8 @@ def validate_shadow_exchange(
     prompt: str,
     provider: str,
     model_parameters: Mapping[str, object],
+    response_schema: Mapping[str, object] | None = None,
+    response_schema_name: str = "ai_stock_ranking",
 ) -> None:
     """Require byte evidence to match the frozen provider request and raw response."""
 
@@ -63,7 +65,13 @@ def validate_shadow_exchange(
         raise ValueError("shadow provider request body must contain JSON") from exc
     if not isinstance(request, dict):
         raise ValueError("shadow provider request body must be an object")
-    expected_request = _expected_request(prompt, provider, model_parameters)
+    expected_request = _expected_request(
+        prompt,
+        provider,
+        model_parameters,
+        response_schema=response_schema,
+        response_schema_name=response_schema_name,
+    )
     if request != expected_request:
         raise ValueError("shadow provider request differs from the frozen prompt")
     parsed = (
@@ -83,7 +91,12 @@ def validate_shadow_exchange(
 
 
 def _expected_request(
-    prompt: str, provider: str, parameters: Mapping[str, object]
+    prompt: str,
+    provider: str,
+    parameters: Mapping[str, object],
+    *,
+    response_schema: Mapping[str, object] | None,
+    response_schema_name: str,
 ) -> dict[str, object]:
     model = cast(str, parameters["model"])
     maximum = cast(int, parameters["max_output_tokens"])
@@ -97,9 +110,11 @@ def _expected_request(
             "text": {
                 "format": {
                     "type": "json_schema",
-                    "name": "ai_stock_ranking",
+                    "name": response_schema_name,
                     "strict": True,
-                    "schema": RankingModelSelection.model_json_schema(),
+                    "schema": dict(
+                        response_schema or RankingModelSelection.model_json_schema()
+                    ),
                 }
             },
         }

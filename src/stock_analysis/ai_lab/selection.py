@@ -33,14 +33,13 @@ from .contracts import (
 )
 from .credentials import load_provider_api_key
 from .inference_config import inference_parameters as _inference_parameters
+from .plan_policies import policy_and_order as _policy_and_order
+from .plan_policies import research_plan as _research_plan
 from .prompting import (
     build_prompt as _build_prompt,
 )
 from .prompting import (
     name_aliases as _name_aliases,
-)
-from .prompting import (
-    presentation_order as _presentation_order,
 )
 from .prompting import (
     replace_universe_identities as _replace_universe_identities,
@@ -66,14 +65,17 @@ from .providers import (
     deepseek_provider_parameters,
 )
 from .ranking_policy import (
-    blinded_presentation_order,
     policy_evidence_record,
-    policy_for_profile,
-    validate_policy_plan,
+    risk_veto_evidence_record,
     validate_policy_selection,
 )
-from .ranking_policy_contract import BoundedRankingPolicy
-from .response_parser import parse_response as _parse_response
+from .ranking_policy_contract import BoundedRankingPolicy, RiskVetoPolicy
+from .response_parser import (
+    parse_ranking_response as _parse_ranking_response,
+)
+from .response_parser import (
+    parse_response as _parse_response,
+)
 from .selection_persistence import write_selection, write_stability_selection
 
 _MAX_PROMPT_BYTES = 2_000_000
@@ -111,6 +113,7 @@ class SelectionPlan:
     prompt_version: ReadablePromptVersion
     prompt_profile: PromptProfile
     ranking_policy: BoundedRankingPolicy | None
+    risk_veto_policy: RiskVetoPolicy | None
     presentation_order: tuple[str, ...]
     symbol_aliases: tuple[tuple[str, str], ...]
     name_aliases: tuple[tuple[str, str], ...]
@@ -125,10 +128,18 @@ class SelectionPlan:
 
     @property
     def ranking_policy_fields(self) -> dict[str, object]:
-        """Return optional manifest fields without changing existing profiles."""
-
         record = self.ranking_policy_record
         return {"ranking_policy": record} if record is not None else {}
+
+    @property
+    def decision_policy_fields(self) -> dict[str, object]:
+        if self.risk_veto_policy is not None:
+            return {
+                "risk_veto_policy": risk_veto_evidence_record(
+                    self.universe, self.risk_veto_policy
+                )
+            }
+        return self.ranking_policy_fields
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,8 +171,6 @@ def build_selection_plan(
     plan_sha256: str | None = None,
     research_only: bool = False,
 ) -> SelectionPlan:
-    """Validate a candidate snapshot and build a deterministic prompt."""
-
     selected_style = _selected_style(market, style)
     if top_n < 1:
         raise ValueError("top_n must be positive")
@@ -170,7 +179,7 @@ def build_selection_plan(
         raise ValueError(
             f"top_n={top_n} exceeds candidate count={len(universe.candidates)}"
         )
-    ranking_policy, order = _ranking_policy_and_order(
+    ranking_policy, risk_veto_policy, order = _policy_and_order(
         universe, market, top_n, prompt_profile, presentation_order
     )
     provider: Provider = "deepseek" if market == "CN" else "gemini"
@@ -203,6 +212,8 @@ def build_selection_plan(
         include_legacy_example=prompt_profile == "legacy_stability_v3",
         ranking_only=prompt_profile == "ranking_only_v1",
         bounded_policy=ranking_policy,
+        strict_bounded_response=prompt_profile == "bounded_ranking_v3",
+        risk_veto_policy=risk_veto_policy,
     )
     if aliases and names:
         _validate_identity_redaction(
@@ -211,6 +222,7 @@ def build_selection_plan(
         )
     if len(prompt.encode()) > _MAX_PROMPT_BYTES:
         raise ValueError("generated prompt exceeds the 2 MB safety limit")
+    is_research = _research_plan(research_only, ranking_policy, risk_veto_policy)
     return SelectionPlan(
         universe=universe,
         market=market,
@@ -221,7 +233,7 @@ def build_selection_plan(
         campaign_id=campaign_id,
         trial_id=trial_id,
         plan_sha256=plan_sha256,
-        research_only=research_only or ranking_policy is not None,
+        research_only=is_research,
         thinking=selected_thinking,
         reasoning_effort=selected_effort,
         max_tokens=selected_max_tokens,
@@ -231,32 +243,11 @@ def build_selection_plan(
         prompt_version=prompt_version,
         prompt_profile=prompt_profile,
         ranking_policy=ranking_policy,
+        risk_veto_policy=risk_veto_policy,
         presentation_order=order,
         symbol_aliases=aliases,
         name_aliases=names,
     )
-
-
-def _ranking_policy_and_order(
-    universe: CandidateUniverse,
-    market: Market,
-    top_n: int,
-    prompt_profile: PromptProfile,
-    supplied: Sequence[str] | None,
-) -> tuple[BoundedRankingPolicy | None, tuple[str, ...]]:
-    policy = policy_for_profile(prompt_profile)
-    if policy is None:
-        return None, _presentation_order(universe, market, supplied)
-    validate_policy_plan(policy, universe, market=market, top_n=top_n)
-    order = blinded_presentation_order(universe, policy)
-    if (
-        supplied is not None
-        and _presentation_order(universe, market, supplied) != order
-    ):
-        raise ValueError(
-            "bounded ranking requires its deterministic blinded presentation order"
-        )
-    return policy, order
 
 
 def _selected_style(market: Market, style: Style | None) -> Style:
@@ -295,6 +286,8 @@ def _selection_limitations(plan: SelectionPlan) -> list[str]:
     limitations = list(plan.universe.evidence_limitations)
     if plan.ranking_policy is not None:
         limitations.append(plan.ranking_policy.selection_limitation)
+    if plan.risk_veto_policy is not None:
+        limitations.append(plan.risk_veto_policy.selection_limitation)
     return limitations
 
 
@@ -306,7 +299,15 @@ def create_selection(
 ) -> SelectionArtifact:
     """Validate strict model JSON and enrich it from canonical candidates."""
 
-    model_selection = _parse_response(response_text)
+    if plan.risk_veto_policy is not None:
+        raise ValueError("risk-veto responses are decisions, not selections")
+    if plan.prompt_profile == "bounded_ranking_v3":
+        strict_ranking = _parse_ranking_response(response_text)
+        model_selection = ModelSelection.model_validate(
+            strict_ranking.model_dump(), strict=True
+        )
+    else:
+        model_selection = _parse_response(response_text)
     if len(model_selection.picks) != plan.top_n:
         raise ValueError("provider output must contain exactly top_n picks")
 
@@ -377,7 +378,13 @@ def create_selection(
 def ranking_symbols(plan: SelectionPlan, response_text: str) -> tuple[str, ...]:
     """Validate the model's ranking without applying publication commentary rules."""
 
-    model_selection = _parse_response(response_text)
+    if plan.risk_veto_policy is not None:
+        raise ValueError("risk-veto responses do not contain a ranking")
+    model_selection = (
+        _parse_ranking_response(response_text)
+        if plan.prompt_profile == "bounded_ranking_v3"
+        else _parse_response(response_text)
+    )
     if len(model_selection.picks) != plan.top_n:
         raise ValueError("provider output must contain exactly top_n picks")
     candidates = {candidate.symbol for candidate in plan.universe.candidates}
@@ -490,6 +497,8 @@ def run_selection(
 ) -> SelectionArtifact:
     """Call the plan's bound provider and return a validated artifact."""
 
+    if plan.risk_veto_policy is not None:
+        raise ValueError("risk-veto plans must run through the shadow owner")
     read_plan_candidate_snapshot(plan)
     response = (
         caller(
