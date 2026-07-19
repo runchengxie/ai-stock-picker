@@ -32,7 +32,6 @@ outputs/
 # Test, type-check and coverage cache
 .pytest_cache/
 .mypy_cache/
-.pyright/
 .ruff_cache/
 .coverage
 .coverage.*
