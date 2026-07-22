@@ -58,6 +58,36 @@ def test_cn_selection_accepts_simplified_chinese_explanations(
     assert "日内波动稳定性" in artifact.picks[0].risk_note
 
 
+def test_cn_commentary_allows_capital_participation_rate_description(
+    cn_manifest: Path,
+) -> None:
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+    reasoning = "依据综合候选评分，资金参与度不足。"
+
+    artifact = create_selection(plan, _cn_response(reasoning))
+
+    assert artifact.picks[0].reasoning == reasoning
+
+
+def test_cn_commentary_still_rejects_participation_advice(
+    cn_manifest: Path,
+) -> None:
+    plan = build_selection_plan(
+        market="CN",
+        candidates_path=cn_manifest,
+        as_of=date(2026, 7, 15),
+        top_n=1,
+    )
+
+    with pytest.raises(ValueError, match="trading advice or a return promise"):
+        create_selection(plan, _cn_response("依据热点主题，可以参与该候选。"))
+
+
 @pytest.mark.parametrize(
     ("feature", "value", "reasoning"),
     [
