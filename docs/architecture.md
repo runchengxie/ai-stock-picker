@@ -61,7 +61,7 @@ CLI 应保持轻量，不在此处实现候选契约或 provider 解析。
 - JSON 和 CSV 读取
 - 输入大小限制
 - manifest 基础校验
-- A 股 v1/v2 契约校验；v2 强制 canonical `source_concepts_policy`
+- A 股 v1/v2 契约校验。v2 强制 canonical `source_concepts_policy`
 - 候选字段归一化
 - prompt 特征白名单
 
@@ -98,7 +98,7 @@ Pydantic 模型使用 strict、extra forbid 和 frozen 配置，避免隐式类�
 - 错误信息清洗
 
 A 股正式选择只使用 `DEEPSEEK_API_KEY`。`.8` shadow 先冻结 provider-neutral
-`ai_shadow_decision_plan`，再由 provider-specific `ai_shadow_launch_receipt` 授权模型参数；
+`ai_shadow_decision_plan`，再由 provider-specific `ai_shadow_launch_receipt` 授权模型参数。
 runner 从 receipt 派生 model partition，并在 receipt 缺失或绑定漂移时 fail closed。显式注入
 caller 且没有 receipt 的旧 rehearsal 只能产生 `legacy_unbound` 证据。
 
@@ -170,8 +170,8 @@ production v4 只渲染一份 `score`，也不包含首行真实候选示例。l
 ### `stock_analysis.ai_lab.shadow_campaign`
 
 负责 `.8` bounded-ranking 与 risk-veto 单日研究执行：三次 repetition、严格本地 schema、
-真实 2/3 多数、Numeric fallback、每单元 complete/tombstone，以及无网络 watchdog。
-目录按 `campaign/arm/provider--model/date/repetition` 分区；`.7` 旧目录和 Borda 共识仍
+真实 2/3 多数、Numeric（一种按数值打分排序的方法）fallback、每单元 complete/tombstone，以及无网络 watchdog。
+目录按 `campaign/arm/provider--model/date/repetition` 分区。`.7` 旧目录和 Borda 共识仍
 按冻结合同只读校验，历史 artifact 不会被改写。
 
 ### `stock_analysis.ai_lab.shadow_validation`

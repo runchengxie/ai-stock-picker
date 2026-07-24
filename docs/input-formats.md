@@ -21,7 +21,7 @@
 
 ## A 股 JSON
 
-A 股支持 `hot_sector_candidate_universe` v1 和 v2 契约。v1 仅用于兼容旧冻结产物；新
+A 股支持 `hot_sector_candidate_universe` v1 和 v2 契约。v1 仅用于兼容旧冻结产物。新
 campaign 应使用 v2。
 
 仓库示例：
@@ -116,7 +116,7 @@ A 股 v1 契约还会检查：
 
 v2 使用 `schema_version=2.0.0`，并要求顶层包含 canonical
 `source_concepts_policy` 和 `model_identity`。`source_concepts` 只能来自 theme、concept
-或 related_concepts；tag、lu_desc、status、rank_reason 和 limit_type 被明确排除。
+或 related_concepts。tag、lu_desc、status、rank_reason 和 limit_type 被明确排除。
 policy 的 canonical JSON SHA-256 必须是
 `d14282e8047367ba61ea762cd3c3de56162329c12f1778c9681246ec7f0f0b40`。
 
