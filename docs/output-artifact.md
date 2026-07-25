@@ -147,7 +147,7 @@ uv run aipick cn validate \
 
 ## Customer commentary 边界
 
-`reasoning` 与 `risk_note` 只用于表达基于候选字段的 AI interpretation，未经独立事实
+`reasoning` 与 `risk_note` 只用于表达基于候选字段的 AI 解读，未经独立事实
 核验。持久化 artifact schema 不为此增加字段。面向客户的 consumer 必须
 固定展示该标签，不能将模型文本包装成已核验事实或投资建议。
 

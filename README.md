@@ -12,6 +12,23 @@
 
 本项目不负责行情采集、候选池生成、回测、消息推送或自动下单。
 
+## 概念速查
+
+本文件面向第一次接触项目的使用者。下文先把正文里的英文黑话一次性讲清，后文不再逐个展开。
+
+- shadow（影子实验）：把候选池、Prompt、模型与推理参数冻结后离线重放的对照实验，用来检验结论是否稳定。
+- bounded arm（受边界约束的排序臂）：对边界股票做约束排序的实验臂，需最终三只边界股票各至少两票才进入 complete（完成态）。
+- risk-veto arm（风险否决臂）：命中 `veto_symbol/risk_code` 时拦截结果的实验臂，要求完全相同符号至少两票。
+- prospective shadow（前瞻影子）：面向未来交易时段、先冻结再发布的影子实验，区别于历史回放。
+- decision plan（决策计划）：冻结 campaign（实验活动）/date/arm、Prompt、候选与 Numeric 证据的不可变工件 `ai_shadow_decision_plan`。
+- launch receipt（发布回执）：在 decision plan 基础上再冻结 数据提供方（provider）、model 与完整推理参数的授权工件 `ai_shadow_launch_receipt`。
+- tombstone（墓碑）：标记某次运行或重复单元失败的终态，与成功终态 complete 相对。
+- consensus（共识）：多次重复经真多数投票达成的一致结论，先完整落盘到隔离 staging（暂存）再原子发布。
+- Borda（Borda 共识）：用 Borda 计票汇总多个排序的共识方法，旧版 `.7` 目录仍按原合同只读重建。
+- Numeric（Numeric 排名）：按数值打分排序的方法，替补顺序只由它决定。
+- manifest（清单）：描述本次运行产物的元数据清单，例如 `legacy_unbound` 标记。
+- artifact（产物）：一次运行产出的校验后 JSON 与 append-only 证据目录。
+
 ## 安装
 
 需要 Python 3.10 至 3.12 和 `uv`。
@@ -91,13 +108,13 @@ uv run aipick cn pick \
 
 `.8` 已实现 `bounded_ranking_v3 / 2026-07-18.8` 与
 `risk_veto_v1 / 2026-07-18.8` 的严格解析、三次重复、真多数共识和 tombstone。
-bounded arm 只有在最终三只边界股票各获得至少两票时才 complete；risk-veto arm 要求
+bounded arm 只有在最终三只边界股票各获得至少两票时才 complete。risk-veto arm 要求
 完全相同的 `veto_symbol/risk_code` 至少两票，替补只能由 Numeric 顺序确定。每次 repetition 以及
-consensus 都先在隔离 staging 完整落盘，再原子发布为 complete 或 tombstone 终态；已有
+consensus 都先在隔离 staging 完整落盘，再原子发布为 complete 或 tombstone 终态。已有
 目录不会覆盖。artifact 内嵌相对路径 candidate snapshot，不复制原始绝对路径。
 
 正式 `.8` 路径使用两个不可变工件解除旧 `ai_pick_plan` 的 DeepSeek 身份绑定：
-`ai_shadow_decision_plan` 只冻结 campaign/date/arm、Prompt、候选和 Numeric 证据；
+`ai_shadow_decision_plan` 只冻结 campaign/date/arm、Prompt、候选和 Numeric 证据。
 `ai_shadow_launch_receipt` 再冻结 provider、model 和完整推理参数。二者使用规范化 JSON 内容
 哈希，receipt 绑定 decision digest，runner 只能由 receipt 构造 model partition：
 
