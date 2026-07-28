@@ -21,8 +21,8 @@ ProviderParameterSchema = Literal["legacy_v1", "explicit_v2"]
 _MODEL_NAME = re.compile(r"^[A-Za-z0-9._-]{1,100}$")
 _MAX_PROMPT_BYTES = 2_000_000
 _MAX_HTTP_RESPONSE_BYTES = 2_000_000
-# 生产模型默认值。market-intel 侧契约 ai_stock_picker_contract.PRODUCTION_MODEL 必须与之同步，
-# 跨仓一致性由 market-intel 的 tests/test_ai_stock_picker_shadow.py 守护。模型升级时需同时修改两侧。
+# 生产模型默认值，market-intel 侧契约 PRODUCTION_MODEL 必须与之同步。
+# 跨仓一致性由 market-intel 的 test_ai_stock_picker_shadow.py 守护，升级时需同时改两侧。
 DEFAULT_DEEPSEEK_MODEL = "deepseek-v4-flash"
 DEFAULT_DEEPSEEK_THINKING: ThinkingMode = "disabled"
 DEFAULT_DEEPSEEK_MAX_TOKENS = 8_192
