@@ -643,7 +643,8 @@ def _topic_for_row(row: dict[str, object], market: Market) -> str:
         if isinstance(value, list):
             if any(not isinstance(item, str) for item in value):
                 raise ValueError(f"candidate {key} must contain only strings")
-            clean = [item.strip() for item in value if item.strip()]
+            items = cast("list[str]", value)
+            clean = [item.strip() for item in items if item.strip()]
             if clean:
                 return " / ".join(clean)
         elif isinstance(value, str) and value.strip():

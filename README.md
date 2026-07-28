@@ -16,18 +16,18 @@
 
 本文件面向第一次接触项目的使用者。下文先把正文里的英文黑话一次性讲清，后文不再逐个展开。
 
-- shadow（影子实验）：把候选池、Prompt、模型与推理参数冻结后离线重放的对照实验，用来检验结论是否稳定。
-- bounded arm（受边界约束的排序臂）：对边界股票做约束排序的实验臂，需最终三只边界股票各至少两票才进入 complete（完成态）。
-- risk-veto arm（风险否决臂）：命中 `veto_symbol/risk_code` 时拦截结果的实验臂，要求完全相同符号至少两票。
-- prospective shadow（前瞻影子）：面向未来交易时段、先冻结再发布的影子实验，区别于历史回放。
-- decision plan（决策计划）：冻结 campaign（实验活动）/date/arm、Prompt、候选与 Numeric 证据的不可变工件 `ai_shadow_decision_plan`。
-- launch receipt（发布回执）：在 decision plan 基础上再冻结 数据提供方（provider）、model 与完整推理参数的授权工件 `ai_shadow_launch_receipt`。
-- tombstone（墓碑）：标记某次运行或重复单元失败的终态，与成功终态 complete 相对。
-- consensus（共识）：多次重复经真多数投票达成的一致结论，先完整落盘到隔离 staging（暂存）再原子发布。
-- Borda（Borda 共识）：用 Borda 计票汇总多个排序的共识方法，旧版 `.7` 目录仍按原合同只读重建。
-- Numeric（Numeric 排名）：按数值打分排序的方法，替补顺序只由它决定。
-- manifest（清单）：描述本次运行产物的元数据清单，例如 `legacy_unbound` 标记。
-- artifact（产物）：一次运行产出的校验后 JSON 与 append-only 证据目录。
+- 影子实验（shadow）：把候选池、Prompt、模型与推理参数冻结后离线重放的对照实验，用来检验结论是否稳定。
+- 受边界约束的排序臂（bounded arm）：对边界股票做约束排序的实验臂，需最终三只边界股票各至少两票才进入完成态（complete）。
+- 风险否决臂（risk-veto arm）：命中 `veto_symbol/risk_code` 时拦截结果的实验臂，要求完全相同符号至少两票。
+- 前瞻影子（prospective shadow）：面向未来交易时段、先冻结再发布的影子实验，区别于历史回放。
+- 决策计划（decision plan）：冻结实验活动（campaign）/date/arm、Prompt、候选与数值（Numeric）证据的不可变工件 `ai_shadow_decision_plan`。
+- 发布回执（launch receipt）：在决策计划基础上再冻结数据提供方（provider）、model 与完整推理参数的授权工件 `ai_shadow_launch_receipt`。
+- 墓碑（tombstone）：标记某次运行或重复单元失败的终态，与成功终态完成态（complete）相对。
+- 共识（consensus）：多次重复经真多数投票达成的一致结论，先完整落盘到隔离暂存（staging）再原子发布。
+- Borda 共识（Borda）：用 Borda 计票汇总多个排序的共识方法，旧版 `.7` 目录仍按原合同只读重建。
+- 数值排名（Numeric）：按数值打分排序的方法，替补顺序只由它决定。
+- 清单（manifest）：描述本次运行产物的元数据清单，例如 `legacy_unbound` 标记。
+- 产物（artifact）：一次运行产出的校验后 JSON 与 append-only 证据目录。
 
 ## 安装
 

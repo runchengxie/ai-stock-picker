@@ -548,7 +548,7 @@ def _list_field(payload: dict[str, object], field: str) -> list[object]:
     value = payload.get(field)
     if not isinstance(value, list):
         raise TypeError(field)
-    return value
+    return cast("list[object]", value)
 
 
 def _dict_field(payload: dict[str, object], field: str) -> dict[str, object]:

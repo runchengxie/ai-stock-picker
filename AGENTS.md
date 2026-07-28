@@ -116,7 +116,7 @@ docs/
 - `shadow_validation.py` 离线复验 shadow bundle、campaign pin 和逐文件摘要
 - `stability_support.py` 生成和校验匿名身份映射
 - `selection.py` 构建选择计划、校验结果并按用途写入文件
-- `app/cli.py` 处理命令行参数和错误输出
+- `src/stock_analysis/app/cli.py` 处理命令行参数和错误输出
 
 ## 开发命令
 
