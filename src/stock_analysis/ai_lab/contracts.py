@@ -48,7 +48,7 @@ SHADOW_TOMBSTONE_REASONS = frozenset(
         "insufficient_consensus_agreement",
     }
 )
-PROMPT_VERSION: Literal["2026-07-17.6"] = "2026-07-17.6"
+PROMPT_VERSION: Literal["2026-07-29.1"] = "2026-07-29.1"
 RANKING_ONLY_PROMPT_VERSION: Literal["2026-07-17.1"] = "2026-07-17.1"
 LEGACY_STABILITY_PROMPT_VERSION: Literal["2026-07-15.3"] = "2026-07-15.3"
 
@@ -82,6 +82,7 @@ ReadablePromptVersion = Literal[
     "2026-07-17.6",
     "2026-07-17.7",
     "2026-07-18.8",
+    "2026-07-29.1",
 ]
 
 _PROMPT_VERSIONS: dict[PromptProfile, ReadablePromptVersion] = {

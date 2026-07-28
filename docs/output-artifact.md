@@ -151,13 +151,13 @@ uv run aipick cn validate \
 核验。持久化 artifact schema 不为此增加字段。面向客户的 consumer 必须
 固定展示该标签，不能将模型文本包装成已核验事实或投资建议。
 
-prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `source_concepts`。上游
-`risk_score` 会在进入 prompt 前投影成 `intraday_stability_score`，语义固定为
+production prompt 只向模型提供股票代码、顶层 `score` 和数值特征；名称、主题、概念及
+其他自由文本不会进入 provider 请求，而是在 selection 通过后从 canonical 候选池确定性
+回填。上游 `risk_score` 会在进入 prompt 前投影成 `intraday_stability_score`，语义固定为
 `higher = more stable`。高值不得解释为风险更高。当前 prompt 版本为
-`2026-07-17.6`。该版本在继续移除真实股票代码示例和重复 `score` 的基础上，明确要求
-`source_topics` 与 `source_concepts` 不可互换。引用其中的值时使用
-`<字段标签>：[<该字段的一个精确值>]`，多个值分别重复字段标签。reader 兼容读取
-`2026-07-15.2`、`2026-07-15.3` 和 `2026-07-16.4`，正式 writer 只发布当前版本。
+`2026-07-29.1`。该版本要求 `reasoning` 与 `risk_note` 各为一句，并以精确
+`field_key=value` 数值作为依据，避免候选概念中的 provider-like 词元与发布安全门冲突。
+reader 兼容读取历史版本，正式 writer 只发布当前版本。
 预注册稳定性试验使用隔离的 legacy v3 构建器，继续保留旧版示例和重复 `score`。
 
 创建 artifact 时还会进行 fail-closed 校验：
@@ -191,7 +191,7 @@ prompt 只允许模型引用候选对象中的字段、`source_topics` 和 `sour
   "generated_at": "2026-07-15T02:00:00Z",
   "provider": "deepseek",
   "model": "deepseek-v4-flash",
-  "prompt_version": "2026-07-17.6",
+  "prompt_version": "2026-07-29.1",
   "style": "momentum",
   "input_contract": "hot_sector_candidate_universe_v1",
   "temporal_status": "contemporaneous",

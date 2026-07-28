@@ -100,7 +100,7 @@ def test_contract_info_is_network_free_and_machine_readable(
         },
         "production_v4": {
             "output_contract": "publication_selection",
-            "prompt_version": "2026-07-17.6",
+            "prompt_version": "2026-07-29.1",
         },
         "ranking_only_v1": {
             "output_contract": "research_selection_or_ranking_diagnostic",

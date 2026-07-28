@@ -177,9 +177,9 @@ Prompt，任何真实股票代码或名称残留都会使执行失败。
 
 ## Prompt 版本隔离
 
-正式 `pick` 使用 production v4，版本为 `2026-07-17.6`。该版本移除了首行真实股票
-示例，每个候选只保留顶层 `score`，并增加 `source_topics` / `source_concepts` 的字段
-隔离与显式候选值引用规则。
+正式 `pick` 使用 production v4，版本为 `2026-07-29.1`。该版本只向 provider 提供代码、
+顶层 `score` 和数值特征，名称、主题、概念等文本在通过校验后从 canonical 候选池回填；
+逐股文案必须以精确 `field_key=value` 数值为依据。
 
 稳定性五臂使用冻结的 legacy v3，版本为 `2026-07-15.3`。它保留旧算法中的首行示例和
 顶层、`features` 内重复的 `score`，便于复现已经预注册的实验。两套构建器分别校验。

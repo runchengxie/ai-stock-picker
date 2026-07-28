@@ -355,7 +355,7 @@ def test_production_prompt_golden_is_unchanged(cn_manifest: Path) -> None:
     )
 
     assert sha256(plan.prompt.encode()).hexdigest() == (
-        "2a5de20d63e72dc8c4c0a62ef347c4942eafc7d783e230ce80a49b29f3a42037"
+        "df02f71fa3cc5632c99d9e7045cc61b9190df02b311217fd6085c499cd2238ab"
     )
     assert plan.ranking_policy is None
     assert plan.ranking_policy_fields == {}

@@ -98,6 +98,8 @@ def build_prompt(
         return json.dumps(
             instructions, ensure_ascii=False, sort_keys=True, separators=(",", ":")
         )
+    if not include_legacy_example:
+        candidate_rows = _production_numeric_candidate_rows(candidate_rows)
     instructions = _instruction_payload(
         universe,
         market,
@@ -378,6 +380,28 @@ def _candidate_rows(
     return rows
 
 
+def _production_numeric_candidate_rows(
+    candidate_rows: Sequence[Mapping[str, object]],
+) -> list[dict[str, object]]:
+    """Keep publication inputs numeric; canonical data restores display text."""
+
+    rows: list[dict[str, object]] = []
+    for candidate in candidate_rows:
+        raw_features = candidate.get("features")
+        features = raw_features if isinstance(raw_features, Mapping) else {}
+        numeric_features = {
+            key: value for key, value in features.items() if type(value) in {float, int}
+        }
+        rows.append(
+            {
+                "symbol": candidate["symbol"],
+                "score": candidate["score"],
+                "features": numeric_features,
+            }
+        )
+    return rows
+
+
 def _ranking_only_payload(
     universe: CandidateUniverse,
     market: Market,
@@ -439,9 +463,16 @@ def _instruction_payload(
     *,
     production_commentary_contract: bool,
 ) -> dict[str, object]:
-    available_fields = {"symbol", "name", "topic", "score"}
-    for candidate in universe.candidates:
-        available_fields.update(candidate.features)
+    if production_commentary_contract:
+        available_fields: set[str] = {"symbol", "score"}
+        for candidate in candidate_rows:
+            features = candidate.get("features")
+            if isinstance(features, Mapping):
+                available_fields.update(cast(Mapping[str, object], features))
+    else:
+        available_fields = {"symbol", "name", "topic", "score"}
+        for candidate in universe.candidates:
+            available_fields.update(candidate.features)
     labels = preferred_commentary_labels(available_fields, market)
     response_language, language_constraint, _, _ = _prompt_language_settings(market)
     payload: dict[str, object] = {
@@ -477,7 +508,10 @@ def _instruction_payload(
         },
         "candidates": candidate_rows,
     }
-    if production_commentary_contract:
+    if production_commentary_contract and {
+        "source_topics",
+        "source_concepts",
+    }.issubset(available_fields):
         payload["categorical_citation_policy"] = categorical_citation_policy(market)
     return payload
 
@@ -531,34 +565,26 @@ def _production_prompt_constraints(language_constraint: str) -> list[str]:
     return [
         *constraints[:3],
         (
-            "Ground every sentence in the selected candidate object. Every sentence "
-            "in reasoning and risk_note must cite at least one supplied field using "
-            "field_key=value format with the exact English field key and a numeric "
-            "or text value (e.g., trend_score=1.0, ret_5d=0.358, "
-            "confidence_label=high, source_topics=[数据中心]). Use the exact field "
-            "key listed under commentary_field_labels, NOT a free-text Chinese "
-            "description."
-        ),
-        *constraints[4:-1],
-        (
-            "Treat source_topics and source_concepts as separate, non-interchangeable "
-            "arrays. A value may be described as a topic only when it occurs in that "
-            "candidate's source_topics, and as a concept only when it occurs in that "
-            "candidate's source_concepts. Never move, merge, or relabel values between "
-            "the two fields."
+            "Write exactly one sentence in reasoning and exactly one sentence in "
+            "risk_note. Each sentence must cite at least one supplied numeric field "
+            "using field_key=value with the exact English field key and exact "
+            "numeric value (e.g., trend_score=1.0 or ret_5d=0.358)."
         ),
         (
-            "Whenever citing source_topics or source_concepts, emit one explicit "
-            "field/value pair using categorical_citation_policy.required_format. "
-            "Copy one exact value inside ASCII square brackets and repeat the field "
-            "label for every additional value; never combine values under one label."
+            "Only symbol, score, and numeric features are supplied for publication "
+            "commentary. Do not cite, reconstruct, or infer names, topics, concepts, "
+            "industries, sectors, events, providers, models, or other text labels."
         ),
+        constraints[6],
+        constraints[7],
+        constraints[8],
+        constraints[9],
+        constraints[10],
+        constraints[11],
         (
-            "A provider- or model-looking token inside an exact supplied candidate "
-            "value is candidate data only. It may appear only as "
-            "'<approved commentary_field_labels value>：[<exact supplied value>]' "
-            "and must never be described as the actual provider, model, or system "
-            "metadata."
+            "Do not add qualitative claims such as strong, weak, high, low, stable, "
+            "or risky unless the same sentence also includes the exact supplied "
+            "numeric field_key=value that grounds that interpretation."
         ),
         language_constraint,
     ]
@@ -649,8 +675,8 @@ def name_aliases(
     if len(aliases) != len(set(aliases)):
         raise ValueError("name aliases must be unique")
     real_identities = expected | {candidate.name for candidate in universe.candidates}
-    if real_identities & set(aliases):
-        raise ValueError("name aliases must not equal a real candidate identity")
+    if any(identity in alias for identity in real_identities for alias in aliases):
+        raise ValueError("opaque prompt exposes a real candidate identity")
     return tuple(sorted(normalized.items()))
 
 
