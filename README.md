@@ -64,6 +64,27 @@ uv run aipick us pick \
   --dry-run
 ```
 
+## 5 分钟稳定性实验
+
+如果想先理解这个项目为什么会研究 LLM 选股稳定性，可以直接运行仓库内的合成候选实验。它不依赖 `research-workspace`、行情数据库、TuShare 或真实股票池。
+
+先冻结五个实验 arm，整个步骤不访问模型：
+
+```bash
+bash experiments/order-sensitivity/prepare.sh
+```
+
+再提供 DeepSeek key，运行 canonical、三个固定 shuffle 和一个匿名 arm：
+
+```bash
+export DEEPSEEK_API_KEY='你的密钥'
+bash experiments/order-sensitivity/run.sh
+```
+
+完整运行通常产生 5 次模型调用。最后的 `stability-summary` 会报告 Top-1 agreement、完整排序 agreement、Top-N Jaccard、平均名次变化，以及 `complete` / `ranking_only` / `rejected` / `missing` 状态。排序合同通过但发布文案失败的调用仍会使用 `ranking_diagnostic.json` 参与稳定性分析，不会被静默删除。
+
+详细实验设计、目录结构和解释边界见 [LLM 选股顺序敏感性实验](experiments/order-sensitivity/README.md)。这个 demo 测的是模型输出稳定性，不测试 alpha。
+
 ## 正式运行
 
 A 股命令只读取 `DEEPSEEK_API_KEY`：
@@ -225,6 +246,7 @@ uv run aipick us pick \
 - [项目架构](docs/architecture.md)
 - [开发与检查](docs/development.md)
 - [示例文件说明](examples/README.md)
+- [LLM 选股顺序敏感性实验](experiments/order-sensitivity/README.md)
 
 ## 本地检查
 

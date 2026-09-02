@@ -13,6 +13,7 @@ aipick cn pick-plan
 aipick cn validate
 aipick cn validate-evidence
 aipick cn stability-plan
+aipick cn stability-summary
 aipick cn trial
 ```
 
@@ -60,6 +61,10 @@ aipick cn trial
     `ranking_diagnostic.json`，不能生成正式选择结果。
 24. production v4 匿名计划必须同时冻结完整的代码映射和名称映射，保存规范化文件、映射
     哈希和可逆关系。完整 Prompt 中不能残留任何真实候选代码或名称。
+25. 稳定性摘要只能使用与 campaign/trial/top_n 匹配的 selection evidence。完整结果需要
+    外部 selection 与 evidence 内镜像一致；外部 selection 缺失时可以从完整 evidence
+    恢复。`ranking_diagnostic.json` 只有在 rejected evidence 明确记录排序通过、发布失败时
+    才能进入排名稳定性分析。
 
 ## 主要目录
 
@@ -85,11 +90,13 @@ src/stock_analysis/
     ├── shadow_campaign.py
     ├── shadow_exchange_validation.py
     ├── shadow_validation.py
+    ├── stability_analysis.py
     ├── stability_support.py
     └── selection.py
 
 tests/
 examples/
+experiments/
 scripts/dev/
 docs/
 ```
@@ -114,6 +121,7 @@ docs/
 - `shadow_campaign.py` 执行 append-only rep3/min2 shadow 与确定性共识
 - `shadow_exchange_validation.py` 复验 shadow 请求和原始响应的语义一致性
 - `shadow_validation.py` 离线复验 shadow bundle、campaign pin 和逐文件摘要
+- `stability_analysis.py` 汇总冻结稳定性实验结果，并把可用排名绑定到对应 evidence lineage
 - `stability_support.py` 生成和校验匿名身份映射
 - `selection.py` 构建选择计划、校验结果并按用途写入文件
 - `src/stock_analysis/app/cli.py` 处理命令行参数和错误输出

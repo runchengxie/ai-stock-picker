@@ -1,0 +1,143 @@
+{
+  "schema_version": "1.0.0",
+  "artifact_type": "hot_sector_candidate_universe",
+  "market": "CN",
+  "date": "2026-06-29",
+  "date_int": "20260629",
+  "observation_date": "20260629",
+  "data_cutoff": "20260629",
+  "data_cutoff_semantics": "end_of_day",
+  "execution_not_before": "next_trading_session",
+  "future_data_included": false,
+  "generated_at": "2026-06-29T16:30:00+08:00",
+  "provenance": {
+    "timezone": "Asia/Shanghai",
+    "observation_date": "20260629",
+    "data_cutoff": "20260629",
+    "future_data_included": false,
+    "artifact_role": "candidate_universe",
+    "strict_point_in_time": false,
+    "rotation": {
+      "as_of_date": "20260629",
+      "signal_date": null,
+      "provenance_level": "unavailable",
+      "strict_point_in_time": false,
+      "publisher_receipt_verified": false,
+      "source_path": null,
+      "limitation": "synthetic demo data has no publisher receipt"
+    }
+  },
+  "evidence": {
+    "strict_point_in_time": false,
+    "out_of_sample_claim": false,
+    "temporal_context": "same_day_eod_generation",
+    "limitations": [
+      "rotation_publisher_receipt_unavailable",
+      "candidate_artifact_does_not_establish_out_of_sample_validity",
+      "synthetic_candidates_only",
+      "demo_is_for_llm_stability_not_alpha_validation"
+    ]
+  },
+  "topics": [
+    {
+      "topic": "合成样本主题",
+      "weight": 1.0,
+      "reasoning": "所有候选使用相同的中性合成主题，减少真实公司叙事信息。",
+      "related_concepts": [
+        "合成概念"
+      ],
+      "source_signals": [
+        "synthetic_demo"
+      ]
+    }
+  ],
+  "candidate_universe": [
+    {
+      "ts_code": "999001.SZ",
+      "name": "候选甲",
+      "score": 1.001,
+      "relevance": 0.81,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999002.SZ",
+      "name": "候选乙",
+      "score": 0.999,
+      "relevance": 0.86,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999003.SZ",
+      "name": "候选丙",
+      "score": 1.002,
+      "relevance": 0.79,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999004.SZ",
+      "name": "候选丁",
+      "score": 0.998,
+      "relevance": 0.88,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999005.SZ",
+      "name": "候选戊",
+      "score": 1.000,
+      "relevance": 0.82,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999006.SZ",
+      "name": "候选己",
+      "score": 0.997,
+      "relevance": 0.90,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999007.SZ",
+      "name": "候选庚",
+      "score": 1.003,
+      "relevance": 0.77,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    },
+    {
+      "ts_code": "999008.SZ",
+      "name": "候选辛",
+      "score": 0.996,
+      "relevance": 0.92,
+      "source_topics": ["合成样本主题"],
+      "source_concepts": ["合成概念"]
+    }
+  ],
+  "universe_size": 8,
+  "config_snapshot": {
+    "min_candidates": 3,
+    "max_candidates": 100,
+    "llm_enabled": false
+  },
+  "data_sources": {
+    "synthetic_demo": true,
+    "dc_concept_available": false,
+    "dc_concept_cons_available": false,
+    "industry_signal_available": false,
+    "industry_signal_date": null
+  },
+  "quality_report": {
+    "available": false,
+    "reason": "future_data_excluded_from_generation",
+    "horizons": {}
+  },
+  "outcome_report": {
+    "available": false,
+    "reason": "future_data_excluded_from_generation",
+    "horizons": {}
+  }
+}

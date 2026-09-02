@@ -8,6 +8,7 @@
 - [输出格式](output-artifact.md)
 - [时间与证据边界](trust-boundaries.md)
 - [证据归档与稳定性试验](evidence-and-stability.md)
+- [LLM 选股顺序敏感性可复现实验](../experiments/order-sensitivity/README.md)
 
 ## 维护文档
 

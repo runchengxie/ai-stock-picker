@@ -55,6 +55,11 @@ from stock_analysis.ai_lab.shadow_validation import (
     validate_shadow_campaign,
     validate_shadow_day,
 )
+from stock_analysis.ai_lab.stability_analysis import (
+    render_stability_summary,
+    summarize_stability_results,
+    write_stability_summary,
+)
 
 _CN_PROMPT_PROFILES = (
     "production_v4",
@@ -75,6 +80,7 @@ _SUPPORTED_COMMANDS = frozenset(
         "shadow-launch-receipt",
         "shadow-watchdog",
         "stability-plan",
+        "stability-summary",
         "trial",
         "validate",
         "validate-evidence",
@@ -204,6 +210,13 @@ def _add_secondary_market_commands(
         _add_deepseek_inference_arguments(stability)
     stability.add_argument("--campaign-id", required=True)
     stability.add_argument("--output-dir", required=True)
+    stability_summary = commands.add_parser(
+        "stability-summary",
+        help="Summarize frozen stability trial results without network access",
+    )
+    stability_summary.add_argument("--campaign-dir", required=True)
+    stability_summary.add_argument("--results-dir", required=True)
+    stability_summary.add_argument("--output", required=True)
     trial = commands.add_parser("trial", help="Run one previously frozen selection")
     trial.add_argument(
         "--plan", required=True, help="Frozen production plan.json or legacy trial.json"
@@ -370,6 +383,12 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "validate-evidence":
             manifest = validate_selection_evidence(args.evidence_dir)
             print(json.dumps(manifest, ensure_ascii=False, sort_keys=True))
+            return 0
+        if args.command == "stability-summary":
+            summary = summarize_stability_results(args.campaign_dir, args.results_dir)
+            output = write_stability_summary(summary, args.output)
+            print(render_stability_summary(summary))
+            print(f"summary_json={output}")
             return 0
         if args.command == "trial":
             plan = load_trial_plan(args.plan)
