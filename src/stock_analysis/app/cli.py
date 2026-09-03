@@ -65,6 +65,8 @@ _CN_PROMPT_PROFILES = (
     "risk_veto_v1",
 )
 _US_PROMPT_PROFILES = ("production_v4", "ranking_only_v1")
+_VALIDATION_RECEIPT_SCHEMA_VERSION = "1.0.0"
+_VALIDATION_RECEIPT_ARTIFACT_TYPE = "ai_stock_selection_validation_receipt"
 _SUPPORTED_COMMANDS = frozenset(
     {
         "contract-info",
@@ -186,6 +188,11 @@ def _add_secondary_market_commands(
     validate.add_argument(
         "--evidence-dir",
         help="Also verify the byte-exact append-only evidence directory",
+    )
+    validate.add_argument(
+        "--validation-receipt",
+        action="store_true",
+        help="Emit a versioned validation receipt bound to the supplied selection bytes",
     )
     evidence = commands.add_parser(
         "validate-evidence", help="Validate an append-only provider evidence directory"
@@ -583,21 +590,21 @@ def _dry_run_payload(
 
 def _validate_selection_command(args: argparse.Namespace, market: Market) -> int:
     selection_path = Path(args.selection).expanduser()
-    artifact = SelectionArtifact.model_validate_json(
-        selection_path.read_text(encoding="utf-8"),
-        strict=True,
-    )
+    selection_bytes = selection_path.read_bytes()
+    artifact = SelectionArtifact.model_validate_json(selection_bytes, strict=True)
     if artifact.market != market:
         raise ValueError(
             f"selection market {artifact.market} does not match CLI market {market}"
         )
     response_verification = "format_only_raw_response_unavailable"
+    evidence_manifest_sha256: str | None = None
     if args.evidence_dir is not None:
         evidence_root = Path(args.evidence_dir).expanduser().resolve()
         manifest = validate_selection_evidence(evidence_root)
-        if (
-            evidence_root / "selection.json"
-        ).read_bytes() != selection_path.read_bytes():
+        evidence_manifest_sha256 = sha256(
+            (evidence_root / "manifest.json").read_bytes()
+        ).hexdigest()
+        if (evidence_root / "selection.json").read_bytes() != selection_bytes:
             raise ValueError("evidence selection differs from the supplied selection")
         response_verification = "byte_exact_evidence"
         validation = validate_selection_artifact(
@@ -610,25 +617,26 @@ def _validate_selection_command(args: argparse.Namespace, market: Market) -> int
         )
     else:
         validation = validate_selection_artifact(artifact, args.candidates)
-    print(
-        json.dumps(
-            {
-                "valid": True,
-                "market": artifact.market,
-                "prompt_version": artifact.prompt_version,
-                "validation_profile": validation.validation_profile,
-                "prompt_hash_revalidated": validation.prompt_hash_revalidated,
-                "commentary_policy_revalidated": (
-                    validation.commentary_policy_revalidated
-                ),
-                "selection_as_of": artifact.selection_as_of.isoformat(),
-                "picks": len(artifact.picks),
-                "response_sha256_verification": response_verification,
-            },
-            ensure_ascii=False,
-            sort_keys=True,
-        )
-    )
+    payload: dict[str, object] = {
+        "valid": True,
+        "market": artifact.market,
+        "prompt_version": artifact.prompt_version,
+        "validation_profile": validation.validation_profile,
+        "prompt_hash_revalidated": validation.prompt_hash_revalidated,
+        "commentary_policy_revalidated": validation.commentary_policy_revalidated,
+        "selection_as_of": artifact.selection_as_of.isoformat(),
+        "picks": len(artifact.picks),
+        "response_sha256_verification": response_verification,
+    }
+    if args.validation_receipt:
+        payload = {
+            "schema_version": _VALIDATION_RECEIPT_SCHEMA_VERSION,
+            "artifact_type": _VALIDATION_RECEIPT_ARTIFACT_TYPE,
+            **payload,
+            "selection_sha256": sha256(selection_bytes).hexdigest(),
+            "evidence_manifest_sha256": evidence_manifest_sha256,
+        }
+    print(json.dumps(payload, ensure_ascii=False, sort_keys=True))
     return 0
 
 
