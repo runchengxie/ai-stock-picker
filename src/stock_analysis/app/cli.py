@@ -192,7 +192,9 @@ def _add_secondary_market_commands(
     validate.add_argument(
         "--validation-receipt",
         action="store_true",
-        help="Emit a versioned validation receipt bound to the supplied selection bytes",
+        help=(
+            "Emit a versioned validation receipt bound to the supplied selection bytes"
+        ),
     )
     evidence = commands.add_parser(
         "validate-evidence", help="Validate an append-only provider evidence directory"
