@@ -1,69 +1,58 @@
-# 证据归档与稳定性试验
+# Evidence archives and stability experiments
 
-## 调用证据
+English · [简体中文](zh-CN/evidence-and-stability.md)
 
-`pick` 和 `trial` 每次调用模型后都会写入独立的证据目录。未传
-`--evidence-dir` 时，目录默认为 `<output>.evidence`。目录和结果文件都采用追加写入，
-已有内容不会被覆盖。
+The first part explains what a model call records. The rest explains frozen inputs, repeated runs, and anonymous controls. For normal use, start with the [Usage guide](usage.md). Evidence helps inspect a process; it does not establish future returns.
 
-证据目录包含：
+## What a call records
 
-- `candidate_input.json` 或 `candidate_input.csv`，候选池原文件
-- `numeric_ranking.json`，完整数值排名
-- `prompt.txt`，实际发送的 Prompt
-- `http_request_envelope.json`，凭据已脱敏的请求信息
-- `provider_request_body.json`，不含凭据的请求正文
-- `provider_response_body.bin`，模型服务返回的原始响应字节
-- `model_response.txt`，成功提取的模型正文
-- `selection.json`，通过校验的选择结果
-- `ranking_diagnostic.json`，排序通过但发布失败时保存的股票顺序
-- `manifest.json`，状态、时间、模型信息和逐文件哈希
+After a model call, `pick` and `trial` write a dedicated archive. Its default location is `<output>.evidence` unless `--evidence-dir` is supplied. Archives and results are append-only and reject existing targets.
 
-新写入的 evidence v2 会在 `provider_parameters` 中保存完整推理参数。DeepSeek 关闭推理
-时保存 `thinking=disabled`、`max_tokens`、`temperature` 和 JSON 输出格式。开启推理时
-保存 `thinking=enabled`、`reasoning_effort`、`max_tokens` 和 JSON 输出格式，请求中不含
-`temperature`。校验器会将这些参数与 `provider_request_body.json` 逐项核对。
+| File | Contents |
+| --- | --- |
+| `candidate_input.json` or `candidate_input.csv` | Original candidate pool |
+| `numeric_ranking.json` | Full numeric ranking |
+| `prompt.txt` | Exact Prompt sent to the model |
+| `http_request_envelope.json` | Sanitized HTTP request information |
+| `provider_request_body.json` | Request body without credentials |
+| `provider_response_body.bin` | Raw response bytes |
+| `model_response.txt` | Successfully extracted model text |
+| `selection.json` | Validated selection |
+| `ranking_diagnostic.json` | Stock order when ranking passes but publication fails |
+| `manifest.json` | Status, timing, model information, and file hashes |
 
-匿名 production 计划生成的证据还会保存 `symbol_aliases`、`name_aliases` 和
-`alias_maps_sha256`。组合哈希的输入是包含上述两个字段的规范化 JSON，字段排序、两空格
-缩进、UTF-8 编码并以一个换行结尾。校验器会用归档候选池重新生成完整 Prompt，并复算
-映射哈希。
+New evidence v2 archives save full inference options in `provider_parameters`. With DeepSeek thinking disabled, these include `thinking=disabled`, `max_tokens`, `temperature`, and JSON output format. With thinking enabled, they include `thinking=enabled`, `reasoning_effort`, `max_tokens`, and JSON format, omitting `temperature`. The validator compares them with `provider_request_body.json`.
 
-`manifest.json` 同时记录请求使用的模型别名和响应返回的实际模型标识。DeepSeek 对应响应
-顶层的 `model`，Gemini 对应 `modelVersion`。服务未返回该字段时记录为空，后续分析应将
-模型身份视为未确认。
+Anonymous production archives also retain `symbol_aliases`, `name_aliases`, and `alias_maps_sha256`. The combined hash covers canonical JSON containing those two mappings: sorted keys, two-space indentation, UTF-8, and one trailing newline. The validator rebuilds the full Prompt from archived candidates and recomputes the mapping hash.
 
-HTTP 调用成功后，响应仍可能出现无效 JSON、错误的顶层类型或缺少模型正文。此类调用会
-保存原始响应，状态记为 `rejected`，并且不会生成 `model_response.txt` 和结果文件。错误
-信息不会包含凭据或底层响应正文。
+The manifest records both the requested model alias and actual response model: top-level `model` for DeepSeek, `modelVersion` for Gemini. If absent, the identity is empty and should be treated as unconfirmed.
 
-证据清单分别记录三个合同：
+An HTTP success can still contain invalid JSON, the wrong top-level type, or no extractable model text. Such runs retain the raw response with status `rejected` and create neither `model_response.txt` nor a selection file. Errors exclude credentials and raw response text.
 
-- `transport_contract` 检查服务响应能否提取为模型正文
-- `ranking_contract` 检查结构、数量、唯一性和候选池成员关系
-- `publication_contract` 检查文案 grounding、安全边界和完整发布契约
+## Three separate checks
 
-排序合同通过而发布合同失败时，状态仍为 `rejected`。此时会生成
-`ranking_diagnostic.json`，业务数据仅含按模型输出顺序排列的股票代码。研究程序可以据此
-分析纯排序表现，交付程序仍需看到正式的 `selection.json` 才能发布结果。
+- `transport_contract`: can the response be extracted as model text?
+- `ranking_contract`: does it satisfy structure, count, uniqueness, and pool membership?
+- `publication_contract`: does commentary satisfy grounding, safety, and the full publication contract?
 
-校验命令如下：
+When ranking passes but publication fails, status remains `rejected`. `ranking_diagnostic.json` contains only the ordered stock symbols as business data, allowing research on ranking performance. A delivery system still requires the official `selection.json` before publication.
+
+Validate an archive:
 
 ```bash
 uv run aipick cn validate-evidence \
   --evidence-dir /absolute/path/selection.evidence
 ```
 
-目录缺少清单、文件哈希不符或出现未登记文件时，校验会失败。
+Missing manifests, hash mismatches, and unregistered files cause failure.
 
-## `.8` append-only prospective shadow
+## Prospective shadow experiments (`.8`)
 
-`bounded_ranking_v3 / 2026-07-18.8` 与 `risk_veto_v1 / 2026-07-18.8`
-要求先冻结 provider-neutral `ai_shadow_decision_plan`，再发布 provider-specific
-`ai_shadow_launch_receipt`。decision plan 绑定 campaign/date/arm、Prompt、candidate、
-Numeric 排名（一种按数值打分排序的方法）和 policy。receipt 绑定 decision digest、provider、model 与推理参数。
-runner 从 receipt 唯一派生 model partition，并要求上海市场信号日 16:00 之后执行。
-每个模型固定三次 repetition，目录为：
+A shadow experiment is a research run kept separate from official selections; see the [Research guide](shadow-research.md) for terminology and launch commands.
+
+`bounded_ranking_v3 / 2026-07-18.8` and `risk_veto_v1 / 2026-07-18.8` require a provider-neutral `ai_shadow_decision_plan`, followed by a provider-specific `ai_shadow_launch_receipt`. The decision binds campaign/date/arm, Prompt, candidates, numeric ranking, and policy. The receipt binds its digest, provider, model, and inference options.
+
+The runner derives the model partition only from the receipt and requires execution after 16:00 on the Shanghai market signal date. Every model has exactly three repetitions:
 
 ```text
 campaign/arm/provider--model/YYYY-MM-DD/repetition-01
@@ -72,38 +61,25 @@ campaign/arm/provider--model/YYYY-MM-DD/repetition-03
 campaign/arm/provider--model/YYYY-MM-DD/consensus
 ```
 
-排序合同通过即可成为 complete repetition。发布文案失败仍保留 hash-indexed
-`ranking.json` 并参与共识。排序失败、拒答或调用失败写 tombstone。共识至少需要两次有效
-结果。bounded arm 固定 Numeric Top7，最终三只边界名称必须各至少两票。risk-veto arm
-要求完全相同的单一 veto 决策至少两票，并由程序用 Numeric reserve 替补。有效次数不足或
-没有真实多数时 consensus 写 tombstone，校验输出同时给出冻结 Numeric Top10
-fallback，但不会把失败日期从样本中删除。
+A repetition is complete when ranking passes. Commentary failure still preserves hash-indexed `ranking.json` for consensus. Ranking failure, refusal, or call failure produces a tombstone: a recorded failed terminal state.
 
-历史 `bounded_ranking_v2 / 2026-07-17.7`、旧 model/date 目录和 Borda 共识继续按原始
-`1.0.0` 合同验证。新 runner 不会改变历史 artifact 语义。
+Consensus needs at least two valid results. The bounded arm fixes the Numeric Top7; each of the final three boundary stocks needs at least two votes. The risk-veto arm needs at least two votes for the identical single veto decision, and the program replaces the vetoed stock from the Numeric reserve. With too few valid results or no true majority, consensus is a tombstone. Validation also returns the frozen Numeric Top10 fallback, retaining failed dates in the sample.
 
-每个终态 bundle 先写入 output root 下的隔离 staging，文件和目录 fsync 后再原子 rename
-到最终分区。发布前中断只会留下不参与 campaign 校验的 staging 残片，watchdog 仍可对
-缺失 repetition 写 tombstone。归档使用相对 `candidate_snapshot_path` 和内容摘要，不重复
-记录原机器的绝对 candidate 路径。campaign validator 会固定同一模型跨日的模型参数、
-style、top_n、Prompt 版本和输入合同，并要求同一交易日各模型读取同一冻结输入。
+Historical `bounded_ranking_v2 / 2026-07-17.7`, old model/date directories, and Borda consensus remain validated under their original `1.0.0` contract. New runners do not reinterpret historical artifacts.
 
-OpenAI adapter 使用 Responses API 的 `text.format` strict JSON Schema、`store=false`，
-并保存请求模型、响应实际模型、refusal、usage 和原始响应。每个 prospective repetition
-内嵌相同的 decision plan/launch receipt bytes。manifest 和 validator summary 暴露
-`decision_plan_sha256`、`launch_receipt_sha256` 与 `evidence_status=prospective_bound`。
-任一内容哈希、provider/model、campaign/date/arm、Prompt 或 candidate 绑定不一致都会失败。
-没有 receipt 的既有 cosplay 只能标为 `legacy_unbound`。标准 `.8` 路径缺少任一工件时在
-网络调用前 fail closed。交易日 registry 和整日 watchdog 仍由外部 control plane 负责。
-历史 `1.1.0` manifest 若三个 lineage 字段全部缺失，也只读归类为 `legacy_unbound`。
-字段只出现一部分则视为损坏并拒绝。
-`prospective_bound` 只证明启动血缘完整。在上游仍声明 `strict_point_in_time=false` 时，
-artifact 继续是 `research_only`，不会自动升级为可晋级的 OOS alpha 证据。
+Each terminal bundle is written into isolated staging under the output root, fsynced, then atomically renamed into its final partition. An interrupted publication leaves staging fragments excluded from campaign validation; the watchdog can still mark missing repetitions as tombstones.
 
-## 冻结 production 选择计划
+Archives use relative `candidate_snapshot_path` and content digests rather than copying the original machine's absolute candidate path. Campaign validation fixes model parameters, style, top_n, Prompt version, and input contract across days for each model, and requires all models on one trading day to use the same frozen input.
 
-`pick-plan` 可以为批量回放冻结单次 production v4 请求。它不读取凭据，也不调用模型。
-展示顺序文件必须是 JSON 字符串数组，并且包含候选池中的全部股票代码，各出现一次。
+The OpenAI adapter uses Responses API `text.format` strict JSON Schema and `store=false`, saving requested and actual model identities, refusal, usage, and raw responses. Each prospective repetition embeds identical decision-plan and launch-receipt bytes. Manifest and validation summaries expose `decision_plan_sha256`, `launch_receipt_sha256`, and `evidence_status=prospective_bound`.
+
+Any mismatch in hashes, provider/model, campaign/date/arm, Prompt, or candidates fails validation. Old injected-caller rehearsals without receipts are `legacy_unbound`. Standard `.8` execution fails before networking if either artifact is missing. Trading-day registries and whole-day watchdog scheduling belong to the external control plane.
+
+Historical `1.1.0` manifests missing all three lineage fields are read-only `legacy_unbound`; partially present fields are corruption and are rejected. `prospective_bound` proves launch lineage only. With upstream `strict_point_in_time=false`, artifacts remain `research_only`, not qualified out-of-sample alpha evidence.
+
+## Freeze a production selection plan
+
+`pick-plan` freezes a production v4 request for repeatable batches. It reads no credentials and makes no model call. A presentation-order file must be a JSON string array containing every candidate symbol exactly once.
 
 ```bash
 uv run aipick cn pick-plan \
@@ -124,20 +100,11 @@ uv run aipick cn pick-plan \
   --output-dir /absolute/path/plans/20260715_pro_shuffle
 ```
 
-冻结目录包含：
+The directory contains `candidate_input.json` or `.csv`, `numeric_ranking.json`, `prompt.txt`, `plan.json`, and `receipt.json`. Anonymous plans also contain `symbol_aliases.json` and `name_aliases.json`.
 
-- `candidate_input.json` 或 `candidate_input.csv`
-- `numeric_ranking.json`
-- `prompt.txt`
-- `plan.json`
-- `receipt.json`
-- `symbol_aliases.json` 和 `name_aliases.json`，仅匿名计划包含
+`plan.json` saves campaign and trial IDs, model, `provider_parameters`, candidate and Prompt hashes, and order. Anonymous plans save both mappings, their individual file hashes, and the combined hash. Both mappings must be supplied together, cover the entire pool, and use unique aliases.
 
-`plan.json` 保存 `campaign_id`、`trial_id`、模型、`provider_parameters`、候选哈希、Prompt
-哈希和展示顺序。匿名计划还保存两份映射、各自的文件哈希和组合哈希。两份映射必须同时
-提供，覆盖完整候选池，且别名必须唯一。`receipt.json` 绑定 `plan.json` 中除文件索引外的
-核心字段，文件索引绑定目录内每个输入文件的精确字节。执行时计算完整 `plan.json` 的
-SHA-256，并写入证据清单。执行方式如下：
+`receipt.json` binds the plan's core fields excluding the file index; that index binds every input file's exact bytes. Execution hashes the full `plan.json` into the evidence manifest:
 
 ```bash
 uv run aipick cn trial \
@@ -146,47 +113,36 @@ uv run aipick cn trial \
   --evidence-dir /absolute/path/results/20260715_pro_shuffle.evidence
 ```
 
-`trial` 会重新读取候选快照并重建 Prompt，核对所有文件和哈希后才会访问模型。命令没有
-模型、推理模式或输出预算覆盖参数，因此实际请求只能使用冻结值。匿名计划还会检查完整
-Prompt，任何真实股票代码或名称残留都会使执行失败。
+`trial` reloads the candidate snapshot, rebuilds the Prompt, and checks files and hashes before calling the model. There are no runtime overrides for model, thinking, or token budget. Anonymous execution also rejects any real symbol or name left anywhere in the full Prompt.
 
-## 五臂稳定性计划
+## Five-arm stability plan
 
-`stability-plan` 只生成试验材料，不读取凭据，也不访问网络。每个日期固定生成五个实验
-臂，顺序如下：
+`stability-plan` prepares materials without credentials or network calls. For each date, it creates these arms in order:
 
-1. `canonical`，标准渲染顺序
-2. `shuffle_101`，使用种子 101 打乱最终渲染顺序
-3. `shuffle_202`，使用种子 202 打乱最终渲染顺序
-4. `shuffle_303`，使用种子 303 打乱最终渲染顺序
-5. `opaque_404`，保留标准顺序，并匿名处理股票代码和名称
+1. `canonical`: standard rendered order.
+2. `shuffle_101`: final rendered order shuffled with seed 101.
+3. `shuffle_202`: shuffled with seed 202.
+4. `shuffle_303`: shuffled with seed 303.
+5. `opaque_404`: standard order with anonymous symbols and names.
 
-三个 shuffle 臂必须互不相同，也必须不同于标准顺序。若候选数量过少导致固定种子无法
-满足约束，计划生成会失败。
+The three shuffled orders must differ from each other and from canonical. Planning fails if a small pool cannot meet this constraint with the fixed seeds.
 
-匿名编号按以下过程生成：
+Anonymous identifiers are assigned by:
 
-1. 对每只股票计算紧凑 JSON 数组
-   `[campaign_id, selection_as_of, symbol, 404]` 的 SHA-256。
-2. 按哈希值和股票代码排序。
-3. 依次分配代码 `C001`、`C002` 和名称 `候选001`、`候选002`。
-4. 将真实身份、匿名身份和身份哈希写入 `identity_mapping`。
+1. Hashing the compact JSON array `[campaign_id, selection_as_of, symbol, 404]` with SHA-256 for each candidate.
+2. Sorting by hash and symbol.
+3. Assigning symbols `C001`, `C002`, … and names `候选001`, `候选002`, ….
+4. Saving real identity, anonymous identity, and identity hash in `identity_mapping`.
 
-匿名臂会检查整个 Prompt，真实股票代码和名称均不得出现。主题及其他文本中的身份引用也
-会同步替换，全部数值字段保持不变。模型返回结果先在匿名标识空间校验，再依据映射还原。
+The full Prompt is checked for real symbols and names. Identity references in themes or other text are also replaced; all numeric fields stay unchanged. Model output is validated in anonymous space before mapping back.
 
-## Prompt 版本隔离
+## Isolated Prompt versions
 
-正式 `pick` 使用 production v4，版本为 `2026-07-29.1`。该版本只向 provider 提供代码、
-顶层 `score` 和数值特征，名称、主题、概念等文本在通过校验后从 canonical 候选池回填；
-逐股文案必须以精确 `field_key=value` 数值为依据。
+Official `pick` uses production v4 version `2026-07-29.1`. Providers receive symbols, top-level `score`, and numeric features. Names, themes, and concepts are filled from canonical candidates after validation. Commentary must reference exact `field_key=value` numbers.
 
-稳定性五臂使用冻结的 legacy v3，版本为 `2026-07-15.3`。它保留旧算法中的首行示例和
-顶层、`features` 内重复的 `score`，便于复现已经预注册的实验。两套构建器分别校验。
-production `plan.json` 通过正式写入器生成结果。legacy v3 `trial.json` 走研究专用写入器，
-并持续标记为 `eligible_as_oos_evidence=false`。
+The five-arm stability experiment uses frozen legacy v3 version `2026-07-15.3`, preserving the first-row example and duplicate top-level/feature `score` for preregistered reproducibility. Builders validate separately. Production `plan.json` uses the official writer; legacy `trial.json` uses a research-only writer and remains `eligible_as_oos_evidence=false`.
 
-单日计划示例：
+A one-day example:
 
 ```bash
 uv run aipick cn stability-plan \
@@ -198,14 +154,11 @@ uv run aipick cn stability-plan \
   --output-dir /absolute/path/stability/20260715
 ```
 
-相同候选池、`campaign_id` 和参数会生成逐字节一致的 `trial.json` 与 `prompt.txt`。
-顶层清单另行记录生成时间、固定种子及全部文件哈希。
+The same pool, campaign ID, and parameters generate byte-identical `trial.json` and `prompt.txt`. The top-level manifest separately records generation time, fixed seeds, and all file hashes.
 
-## 一次生成预注册的 20 个日期
+## Batch the preregistered 20 dates
 
-以下命令不会调用 DeepSeek。示例假设候选文件位于
-`$candidate_root/<YYYYMMDD>/candidate_universe.json`。首次执行前应确认有效日期确为 116
-个，并冻结完整日期清单和候选文件哈希。
+This example does not call DeepSeek. It assumes files under `$candidate_root/<YYYYMMDD>/candidate_universe.json`. The historical registration assumes 116 valid dates; verify that count and freeze the complete date list and candidate hashes before using it.
 
 ```bash
 candidate_root=/absolute/path/candidates
@@ -229,10 +182,9 @@ do
 done
 ```
 
-有效日期数量变化时，应按预注册公式
-`round(i * (n - 1) / 19)` 重新选取 20 个日期，并在计划外单独记录差异。
+If the count changes, select 20 dates again with the preregistered formula `round(i * (n - 1) / 19)` and record the difference separately from the plans.
 
-## 运行单个实验臂
+## Execute one arm
 
 ```bash
 uv run aipick cn trial \
@@ -241,11 +193,8 @@ uv run aipick cn trial \
   --evidence-dir /absolute/path/results/20260715_shuffle_101.evidence
 ```
 
-`trial` 会按 `trial.json` 中的版本重建 Prompt，并要求字节内容与冻结文件完全一致，然后
-才会调用模型。
+`trial` rebuilds the Prompt using the version in `trial.json`, requires byte equality with the frozen file, then calls the model.
 
-## 解释边界
+## Interpretation limits
 
-证据目录可以说明某次运行使用了哪些本地材料，也能发现后续改写。历史文件是否在当时
-已经存在，仍需外部发布回执或持续的追加式时间记录证明。回放结果继续作为研究证据，
-不具备正式样本外资格。
+An archive identifies the local materials used and detects later modification. Historical existence still requires external publication receipts or continuous append-only time records. Replayed results remain research evidence without qualified out-of-sample status.

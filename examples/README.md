@@ -1,57 +1,37 @@
-# 示例文件
+# Example inputs
 
-本目录保存可以直接用于 dry-run 的候选池输入。
+English · [简体中文](../docs/zh-CN/examples.md)
 
-## A 股
+These bundled files can be used directly for dry runs. They are historical inputs, not current recommendations. Run commands from the repository root.
 
-文件：
+## A-shares
 
-- `cn_candidates.json`
-
-特点：
-
-- 符合 `hot_sector_candidate_universe` v1 契约
-- 包含 1 个候选
-- 适合配合 `--top-n 1`
-
-运行：
+[`cn_candidates.json`](cn_candidates.json) follows the v1 `hot_sector_candidate_universe` contract and contains one candidate. Use `--top-n 1`. New research campaigns should use v2; this fixture remains for compatibility and installation checks.
 
 ```bash
 uv run aipick cn pick \
-  --candidates "$PWD/examples/cn_candidates.json" \
+  --candidates examples/cn_candidates.json \
   --as-of 2026-06-30 \
   --top-n 1 \
   --style momentum \
   --dry-run
 ```
 
-## 美股
+## US stocks
 
-文件：
-
-- `us_candidates.json`
-
-特点：
-
-- 使用通用 JSON manifest
-- 包含 2 个候选
-- 适合配合 `--top-n 1` 或 `--top-n 2`
-
-运行：
+[`us_candidates.json`](us_candidates.json) is a generic JSON manifest with two candidates. Use `--top-n 1` or `2`.
 
 ```bash
 uv run aipick us pick \
-  --candidates "$PWD/examples/us_candidates.json" \
+  --candidates examples/us_candidates.json \
   --as-of 2026-07-15 \
   --top-n 2 \
   --style quality \
   --dry-run
 ```
 
-## 为什么保留 `examples/`
+## Why keep these in `examples/`?
 
-这些文件是输入示例，帮助使用者理解格式并验证安装结果。
+They are source-controlled input fixtures for learning formats and checking installation, not generated output. Save generated selections and retained evidence outside the repository in a caller-specified location.
 
-它们不属于程序生成输出，因此不放入 `artifacts/`。生成的选择结果应写入调用者指定的位置，仓库不会提供默认输出目录。
-
-完整字段说明见 [`../docs/input-formats.md`](../docs/input-formats.md)。
+See [Input formats](../docs/input-formats.md) for the field reference.

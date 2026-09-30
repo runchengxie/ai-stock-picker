@@ -1,193 +1,80 @@
-# 项目架构
+# Architecture
 
-## 发布边界
+English · [简体中文](zh-CN/architecture.md)
 
-本项目只负责候选池生成之后的模型重排。
+For maintainers: follow the execution flow to locate a change. Candidate validation handles input issues, providers handle model calls, and selection/evidence modules handle saved results. Normal users do not need these internals.
 
-输入：
+## Product boundary
 
-- 外部生成的 A 股或美股候选池
-- 选择信号日期
-- 需要返回的数量
-- 选择风格
+The project ranks candidates after an external system has generated the pool. Inputs are an A-share or US pool, signal date, requested count, and ranking style. The official output is a strictly validated `ai_stock_selection` JSON file. Market data collection, candidate generation, backtesting, notifications, and order execution are outside scope.
 
-输出：
-
-- 经过严格校验的 `ai_stock_selection` JSON 文件
-
-项目不包含行情采集、候选生成、回测、通知和订单执行。
-
-## 调用流程
+## Execution flow
 
 ```text
-CLI 参数
+CLI options
   ↓
-读取并校验候选池
+Read and validate candidates
   ↓
-归一化候选字段
+Normalize fields
   ↓
-构建确定性 prompt
+Build deterministic Prompt
   ↓
-调用市场绑定的 provider
+Call the market-bound provider
   ↓
-校验模型 JSON
+Validate model JSON
   ↓
-从候选池回填名称和主题
+Fill names and themes from the pool
   ↓
-构建 SelectionArtifact
+Build SelectionArtifact
   ↓
-写入 append-only 证据目录
+Write append-only evidence
   ↓
-原子写入结果文件且拒绝覆盖
+Write the result atomically, rejecting existing files
 ```
 
-## 模块职责
+## Module responsibilities
 
-### `stock_analysis.app.cli`
+All names below are under `stock_analysis`.
 
-负责：
+| Module | Responsibility |
+| --- | --- |
+| `app.cli` | Arguments, readable errors, dry-run summaries, and core dispatch; keep candidate contracts and provider parsing out of CLI |
+| `ai_lab.candidates` | JSON/CSV reading, size limits, manifest validation, CN v1/v2 contracts, normalization, and Prompt feature allowlists; v2 requires canonical `source_concepts_policy` |
+| `ai_lab.contracts` | Market/provider/style types, model and artifact schemas, cross-field checks for time, lineage, and picks |
+| `ai_lab.credentials` | Securely read an explicit owner credential file and return only the plan's provider key |
+| `ai_lab.providers` | DeepSeek/Gemini HTTPS and OpenAI research Responses API calls, parsing, actual model identity, raw invalid-response retention, size limits, credential isolation, sanitized errors |
+| `ai_lab.selection` | Plans, provider dispatch, output validation, artifact construction, and isolated official/research persistence |
+| `ai_lab.prompting` | Separate production v4 and frozen legacy v3 rendering, presentation order, aliases, and anonymous text replacement |
+| `ai_lab.evidence` | Original input and numeric ranking, exact Prompt and sanitized requests/raw responses, identities/times/hashes/selections, five fixed stability arms, archive integrity and overwrite rejection |
+| `ai_lab.evidence_consistency` | Reconstruct archived plans and cross-check requests, responses, parameters, hashes, and results; read v1 under its original request contract, write v2 |
+| `ai_lab.evidence_contracts` | Separate transport/ranking/publication checks; retain order-only research diagnostics on publication failure |
+| `ai_lab.frozen_plan` | Write and rebuild network-free production plans including inputs, ranking, Prompt/order/model/inference options; bind anonymous mappings and verify identity removal |
+| `ai_lab.stability_support` | Hash-based anonymous IDs, reversible identity mappings, removal of real identities, and numeric consistency |
+| `ai_lab.shadow_campaign` | `.8` bounded-ranking/risk-veto day execution, three repetitions, strict local schemas, true 2/3 majority, Numeric fallback, complete/tombstone states, and network-free watchdog |
+| `ai_lab.shadow_validation` | Offline repetitions/consensus/hash/lineage validation and deterministic consensus reconstruction |
+| `ai_lab.shadow_exchange_validation` | Rebuild provider requests and cross-check Prompt, request body, raw response, extracted text, actual model, refusal, and usage |
 
-- 命令行参数
-- 用户可读错误
-- dry-run 摘要
-- 调用核心流程
+`candidates` still has a broad responsibility. Extracting CN contract validation while retaining one loading entry point is a possible follow-up, rather than adding more public loaders now.
 
-CLI 应保持轻量，不在此处实现候选契约或 provider 解析。
+Pydantic models use strict, extra-forbid, and frozen configuration to prevent implicit coercion and accidental mutation.
 
-### `stock_analysis.ai_lab.candidates`
+## Providers and credentials
 
-负责：
+Official A-share selections use only `DEEPSEEK_API_KEY`; US selections use only `GEMINI_API_KEY`. `.8` research first freezes a provider-neutral `ai_shadow_decision_plan`, then authorizes provider/model/inference parameters through `ai_shadow_launch_receipt`. The runner derives its model partition from the receipt and rejects missing or drifting bindings. Old explicit injected-caller rehearsals without receipts can produce only `legacy_unbound` evidence.
 
-- JSON 和 CSV 读取
-- 输入大小限制
-- manifest 基础校验
-- A 股 v1/v2 契约校验。v2 强制 canonical `source_concepts_policy`
-- 候选字段归一化
-- prompt 特征白名单
+Credentials use non-forwardable headers and are not carried across provider redirects. An explicit `--credential-file` is read through a safe file descriptor and must be a regular, current-user-owned file with permissions exactly `0600`, at most 128 KiB, and no symlink.
 
-该模块当前职责较多。后续可以将 A 股契约校验提取到独立模块，同时保留一个统一的候选加载入口。
+Prefer strict JSON `ai_stock_picker.<deepseek|gemini>.api_key`; literal UTF-8 `KEY=value` remains supported. Neither executes shell code or expands `$()`. Only the plan's provider key is returned. Duplicate JSON fields, invalid types, and empty keys fail. Process environment keys are used only without an explicit file.
 
-### `stock_analysis.ai_lab.contracts`
+Device/inode/size/mtime/ctime snapshots are compared before and after reading; even an in-place rewrite on the same inode fails.
 
-负责：
+## Prompt and research isolation
 
-- 市场、provider 和 style 类型
-- 模型输出 schema
-- 持久化结果 schema
-- 时间、lineage 和 picks 的交叉校验
+Production v4 renders `score` once and omits a first-row real candidate example. Frozen legacy v3 retains the duplicate score and example exclusively for preregistered stability trials.
 
-Pydantic 模型使用 strict、extra forbid 和 frozen 配置，避免隐式类型转换和结果写入后的意外修改。
+New research partitions use `campaign/arm/provider--model/date/repetition`. Historical `.7` directories and Borda consensus remain read-only under their frozen contracts. Cross-repository consumers call `validate-shadow-day` or `validate-shadow-campaign` rather than copying schemas or Prompt constants.
 
-### `stock_analysis.ai_lab.credentials`
-
-负责安全读取显式传入的 owner 凭据文件，并且只返回 selection plan 对应 provider 的
-专属 key。
-
-### `stock_analysis.ai_lab.providers`
-
-负责：
-
-- DeepSeek HTTPS 请求
-- Gemini HTTPS 请求
-- OpenAI Responses API 研究 shadow 请求
-- provider 响应解析
-- 响应实际模型标识提取
-- HTTP 成功但正文无效时保留原始响应
-- 请求和响应大小限制
-- 凭据隔离
-- 错误信息清洗
-
-A 股正式选择只使用 `DEEPSEEK_API_KEY`。`.8` shadow 先冻结 provider-neutral
-`ai_shadow_decision_plan`，再由 provider-specific `ai_shadow_launch_receipt` 授权模型参数。
-runner 从 receipt 派生 model partition，并在 receipt 缺失或绑定漂移时 fail closed。显式注入
-caller 且没有 receipt 的旧 rehearsal 只能产生 `legacy_unbound` 证据。
-
-美股只使用 `GEMINI_API_KEY`。
-
-凭据放入不可转发 header，provider 重定向不会携带密钥。
-
-显式传入 `--credential-file` 时，`stock_analysis.ai_lab.credentials` 使用安全文件描述符
-读取普通文件：要求当前用户所有、权限精确为 `0600`、大小不超过 128 KiB，并拒绝
-符号链接。推荐使用严格 JSON 命名空间
-`ai_stock_picker.<deepseek|gemini>.api_key`，旧的 UTF-8 literal `KEY=value` 继续兼容。
-两种格式都不执行 shell、不展开 `$()`，并按 selection plan 的 provider 只返回对应
-key。JSON 重复字段、错误类型与空 key 会失败。未显式传文件时，provider 才回退读取
-自己的进程环境变量。读取前后还会比较文件的 device/inode/size/mtime/ctime 快照。
-读取期间即使同 inode 原地改写也会失败。
-
-### `stock_analysis.ai_lab.selection`
-
-负责：
-
-- 选择计划
-- provider 调度
-- 模型输出校验
-- 结果文件构建
-- 正式结果与研究结果的隔离写入
-
-### `stock_analysis.ai_lab.prompting`
-
-负责：
-
-- production v4 的 Prompt 渲染
-- 冻结 legacy v3 的 Prompt 渲染
-- 候选展示顺序
-- 股票代码和名称别名
-- 匿名文本中的身份替换
-
-production v4 只渲染一份 `score`，也不包含首行真实候选示例。legacy v3 保留旧算法的
-重复 `score` 和首行示例，只供预注册稳定性实验使用。
-
-### `stock_analysis.ai_lab.evidence`
-
-负责：
-
-- 保存候选池原文件和完整数值排名
-- 保存精确 prompt、脱敏 HTTP 请求信息和原始响应
-- 记录请求模型别名、响应实际模型、时间、逐文件哈希和最终选择
-- 生成标准顺序、三个固定种子 shuffle 和匿名对照共五个实验臂
-- 校验证据目录完整性并拒绝覆盖
-
-### `stock_analysis.ai_lab.evidence_consistency`
-
-负责重建归档计划，核对原始请求、模型响应、清单参数、逐文件哈希和选择结果。
-旧版 evidence v1 继续按当时的请求合同验证，新写入内容使用 evidence v2。
-
-### `stock_analysis.ai_lab.evidence_contracts`
-
-分别判断传输、排序和发布三层合同。排序通过而发布失败时，生成只含股票顺序的研究诊断。
-
-### `stock_analysis.ai_lab.frozen_plan`
-
-负责写入和重建无网络 production 选择计划。冻结内容包含候选池、完整数值排名、Prompt、
-展示顺序、模型和 DeepSeek 推理参数。匿名计划还会冻结代码映射、名称映射及对应哈希，
-重建时再次检查完整 Prompt 中是否残留真实身份。
-
-### `stock_analysis.ai_lab.stability_support`
-
-负责匿名实验臂的哈希编号、可逆身份映射、真实身份清除和数值字段一致性检查。
-
-### `stock_analysis.ai_lab.shadow_campaign`
-
-负责 `.8` bounded-ranking 与 risk-veto 单日研究执行：三次 repetition、严格本地 schema、
-真实 2/3 多数、Numeric（一种按数值打分排序的方法）fallback、每单元 complete/tombstone，以及无网络 watchdog。
-目录按 `campaign/arm/provider--model/date/repetition` 分区。`.7` 旧目录和 Borda 共识仍
-按冻结合同只读校验，历史 artifact 不会被改写。
-
-### `stock_analysis.ai_lab.shadow_validation`
-
-负责离线复验 repetition、consensus、逐文件哈希、跨 repetition lineage 和确定性共识。
-跨仓 consumer 应调用 `validate-shadow-day` 或 `validate-shadow-campaign`，不复制这些
-schema 或 Prompt 常量。
-
-### `stock_analysis.ai_lab.shadow_exchange_validation`
-
-负责按 provider 重建冻结请求，并把归档 Prompt、请求正文、原始响应、提取文本、实际
-模型、refusal 和 usage 做语义交叉校验。
-
-## 依赖方向
-
-推荐依赖方向：
+## Dependency direction
 
 ```text
 cli
@@ -197,39 +84,25 @@ cli
     └── selection + stability_support
 ```
 
-约束：
+- `contracts` does not depend on CLI.
+- `providers` does not depend on candidate file formats.
+- `candidates` does not call providers.
+- Tests isolate networking with injected callers or transports.
 
-- `contracts` 不依赖 CLI
-- `providers` 不依赖候选文件格式
-- `candidates` 不访问 provider
-- 测试通过注入 caller 或 transport 隔离网络
+## Names and examples
 
-## 名称说明
+The distribution is `ai-stock-picker`, the command is `aipick`, and the Python namespace is `stock_analysis`. The namespace predates the current narrower product. A rename to `ai_stock_picker` would change imports, packaging, and external callers and belongs in a separate compatibility-reviewed change.
 
-当前名称分为三层：
+`examples/` contains runnable input fixtures used to verify documentation commands, not generated outputs. Keep them there rather than under an ambiguous `artifacts/` directory.
 
-- 发布包名：`ai-stock-picker`
-- CLI：`aipick`
-- Python namespace：`stock_analysis`
+## Possible follow-ups
 
-`stock_analysis` 来自项目早期阶段，覆盖范围大于当前产品边界。
+Use independent PRs for public-interface or persisted-format changes:
 
-将 namespace 调整为 `ai_stock_picker` 更符合当前产品定位，但这会改变所有 import、打包配置和外部调用路径。该迁移适合单独提交，便于评审兼容性和回滚。本轮文档与工具链整理保留现有 namespace，不在同一个 PR 中混入破坏性重命名。
+1. Migrate the Python namespace to `ai_stock_picker`.
+2. Separate generic candidate loading from CN contract validation.
+3. Define a versioned US input contract.
+4. Move legacy CSV to an explicit migration command and gradually deprecate it in core execution.
+5. Avoid local absolute paths in persisted lineage.
 
-## 示例文件
-
-`examples/` 保存可运行的输入示例，也用于验证文档命令。
-
-示例文件不属于运行输出，因此不移动到 `artifacts/`。`artifacts/` 容易被理解为程序生成结果或构建产物。
-
-## 已知后续工作
-
-建议按独立 PR 处理：
-
-1. 将 Python namespace 迁移为 `ai_stock_picker`
-2. 拆分 `candidates.py` 的通用加载与 A 股契约校验
-3. 为美股定义正式版本化输入契约
-4. 将 legacy CSV 移至显式迁移命令，并在核心流程中逐步弃用
-5. 避免在持久化 lineage 中写入本地绝对路径
-
-这些调整涉及公共接口或持久化格式，不应和文档及工具链变更捆绑成一次难以审查的大改动。
+Do not bundle these compatibility changes with website or documentation work.

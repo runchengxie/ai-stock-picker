@@ -132,7 +132,7 @@ uv sync --locked --group dev
 uv run python scripts/dev/check.py
 ```
 
-项目不使用 pre-commit、GitHub Actions 质量工作流或 Makefile。不要为同一套检查重新创建多个独立入口。
+项目不使用 pre-commit 或 Makefile。已有 GitHub Actions 质量工作流调用同一个检查入口，不要为同一套检查重新创建多个独立入口。展示页部署使用独立的 Pages 工作流。
 
 ## 测试要求
 

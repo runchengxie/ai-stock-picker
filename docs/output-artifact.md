@@ -1,18 +1,16 @@
-# 输出格式
+# Output format
 
-正式运行会生成 `ai_stock_selection` v1 JSON 文件。
+English · [简体中文](zh-CN/output-artifact.md)
 
-输出文件写入前会再次通过 Pydantic strict 校验。目标路径已经存在时，命令会失败，不会覆盖原文件。
+After a successful run, inspect the selected stocks and commentary. For integration, use the field reference below. An invalid model response does not produce an official selection.
 
-## 顶层字段
+Real runs create an `ai_stock_selection` v1 JSON file. The file is revalidated with Pydantic strict rules before writing. An existing target causes failure rather than an overwrite.
 
-### 身份字段
+## Top-level fields
 
-- `schema_version`
-- `artifact_type`
-- `market`
+### Identity
 
-当前值：
+`schema_version`, `artifact_type`, and `market`:
 
 ```json
 {
@@ -22,50 +20,23 @@
 }
 ```
 
-### 时间字段
+### Time
 
-- `selection_as_of`
-- `candidate_observation_date`
-- `candidate_generated_at`
-- `data_cutoff`
-- `upstream_execution_not_before`
-- `generated_at`
-- `temporal_status`
+`selection_as_of`, `candidate_observation_date`, `candidate_generated_at`, `data_cutoff`, `upstream_execution_not_before`, `generated_at`, and `temporal_status`.
 
-`generated_at` 会转换为 UTC。
+`generated_at` is converted to UTC. `temporal_status` is either `contemporaneous` or `retrospective_simulation`; see [Time and evidence boundaries](trust-boundaries.md).
 
-`temporal_status` 可能为：
+### Model
 
-- `contemporaneous`
-- `retrospective_simulation`
+`provider`, `model`, `prompt_version`, `style`, and `selection_method`.
 
-详细语义见 [时间与证据边界](trust-boundaries.md)。
+Official A-share selections use `deepseek`; US selections use `gemini`. `selection_method` is currently `llm_candidate_rerank`.
 
-### 模型字段
+### Input and evidence
 
-- `provider`
-- `model`
-- `prompt_version`
-- `style`
-- `selection_method`
+`input_contract`, `point_in_time_assurance`, `strict_point_in_time`, `eligible_as_oos_evidence`, `evidence_limitations`, `input_count`, and `requested_top_n`.
 
-A 股 provider 固定为 `deepseek`。
-
-美股 provider 固定为 `gemini`。
-
-`selection_method` 当前固定为 `llm_candidate_rerank`。
-
-### 输入与证据字段
-
-- `input_contract`
-- `point_in_time_assurance`
-- `strict_point_in_time`
-- `eligible_as_oos_evidence`
-- `evidence_limitations`
-- `input_count`
-- `requested_top_n`
-
-当前所有结果固定包含：
+All current selections include:
 
 ```json
 {
@@ -74,109 +45,65 @@ A 股 provider 固定为 `deepseek`。
 }
 ```
 
-这些字段用于防止结果被误解为严格时点证明或正式样本外证据。
+These values prevent a run from being presented as strict historical timing proof or qualified out-of-sample evidence.
 
-## Lineage
+## Lineage and validation
 
-`lineage` 记录本次结果所依赖内容的 SHA-256：
+`lineage` records `candidate_path` and the SHA-256 values `input_sha256`, `candidate_symbols_sha256`, `prompt_sha256`, and `response_sha256`. Hashes detect content changes; they do not prove historical existence or replace trusted external timestamps.
 
-- `candidate_path`
-- `input_sha256`
-- `candidate_symbols_sha256`
-- `prompt_sha256`
-- `response_sha256`
-
-哈希可以用于检查内容是否变化。
-
-哈希不能证明内容在某个历史时间已经存在，也不能代替外部可信时间戳。
-
-保存 artifact 后可以用同一份候选快照做严格复验：
+Revalidate an artifact against the same candidate snapshot:
 
 ```bash
 uv run aipick cn validate \
-  --selection outputs/cn-selection.json \
+  --selection "$HOME/data/ai-stock-picker/cn-selection.json" \
   --candidates /absolute/path/candidates.json
 ```
 
-命令会重新读取候选快照并核对路径、输入哈希、代码集合哈希、日期、数量、候选元数据、
-证据限制、入选成员、名称、主题和每条展示文案。当前 prompt 会确定性重建并核对
-`prompt_sha256`，`validation_profile` 为 `current_full`。
+The validator reloads the snapshot and checks its path, input and symbol-set hashes, dates, counts, metadata, evidence limitations, selected members, names, themes, and every commentary field. The current Prompt is rebuilt deterministically and checked against `prompt_sha256`, yielding `validation_profile=current_full`.
 
-兼容版本 `2026-07-15.2` 和 `2026-07-15.3` 使用 `legacy_read_only`。这些版本保留输入、
-成员和文案安全检查，不复算已经变化的 prompt，也不会改写旧结果。
+Versions `2026-07-15.2` and `2026-07-15.3` use `legacy_read_only`: input, membership, and commentary safety are checked, but changed Prompts are not recomputed and old results are not rewritten.
 
-传入 `--evidence-dir` 后，命令还会核对证据目录中的原始响应、精确 prompt、选择结果和
-逐文件哈希，并报告 `response_sha256_verification=byte_exact_evidence`。旧结果缺少证据
-目录时，只能检查响应哈希的格式。
+With `--evidence-dir`, validation also checks the raw response, exact Prompt, selection, and file hashes, reporting `response_sha256_verification=byte_exact_evidence`. Without the archive, only the response hash format can be checked. See [Validation receipt](validation-receipt.md) for downstream binding.
 
 ## Picks
 
-`picks` 数量必须与 `requested_top_n` 完全一致。
+The number of `picks` must equal `requested_top_n`. Each pick has `rank`, `symbol`, `name`, `topic`, `confidence_score`, `reasoning`, and `risk_note`.
 
-每个结果包含：
+The model returns only `symbol`, `confidence_score`, `reasoning`, and `risk_note`; the program fills `name` and `topic` from the candidate pool.
 
-- `rank`
-- `symbol`
-- `name`
-- `topic`
-- `confidence_score`
-- `reasoning`
-- `risk_note`
+Checks include:
 
-其中模型只负责返回：
+- Symbols are unique and belong to the input pool.
+- Ranks are consecutive starting at 1.
+- `confidence_score` is an integer from 1 to 10.
+- Extra model fields are rejected.
+- A-share reasoning and risk notes contain Chinese; US commentary uses English.
+- Each sentence references an actual candidate field using its key or an approved English/Chinese label.
+- Commentary does not expose provider/model identity or structured system metadata, URLs, secrets, trading or holding instructions, target prices, or guaranteed returns.
 
-- `symbol`
-- `confidence_score`
-- `reasoning`
-- `risk_note`
+Documentation language does not change the market-specific output language requirements.
 
-`name` 和 `topic` 由程序从候选池回填。
+## Commentary boundaries
 
-程序还会检查：
+`reasoning` and `risk_note` are AI interpretations of candidate fields, not independently fact-checked statements. The persisted schema adds no field for this label; customer-facing consumers must display it consistently and must not present commentary as verified facts or investment advice.
 
-- 股票代码来自候选池
-- 股票代码不重复
-- 排名从 1 开始连续递增
-- `confidence_score` 是 1 至 10 的整数
-- 模型没有返回额外字段
-- A 股解释和风险说明包含中文
-- 美股解释和风险说明使用英文
-- 每个句子都以内部字段名或获批的中英文客户标签引用该候选实际存在的字段
-- 文本不披露实际 provider/model 身份或结构化系统元数据，也不包含 URL/secret、买卖或
-  持有指令、目标价或保证收益
+The production Prompt provides only symbols, the top-level `score`, and numeric features. Names, themes, concepts, and other free text stay out of provider requests and are filled deterministically from the canonical pool after validation.
 
-## Customer commentary 边界
+Upstream `risk_score` is projected to `intraday_stability_score`, with fixed meaning **higher = more stable**. A high value must never be interpreted as higher risk. Current Prompt version `2026-07-29.1` requires one sentence each for `reasoning` and `risk_note`, grounded in exact `field_key=value` numeric references. This avoids provider-like tokens in candidate concepts conflicting with publication checks. Readers accept historical versions; official writers publish only the current version. Preregistered stability trials use a separate legacy v3 builder retaining old examples and duplicate `score` fields.
 
-`reasoning` 与 `risk_note` 只用于表达基于候选字段的 AI 解读，未经独立事实
-核验。持久化 artifact schema 不为此增加字段。面向客户的 consumer 必须
-固定展示该标签，不能将模型文本包装成已核验事实或投资建议。
+Artifact creation rejects the result if any of these requirements fail:
 
-production prompt 只向模型提供股票代码、顶层 `score` 和数值特征；名称、主题、概念及
-其他自由文本不会进入 provider 请求，而是在 selection 通过后从 canonical 候选池确定性
-回填。上游 `risk_score` 会在进入 prompt 前投影成 `intraday_stability_score`，语义固定为
-`higher = more stable`。高值不得解释为风险更高。当前 prompt 版本为
-`2026-07-29.1`。该版本要求 `reasoning` 与 `risk_note` 各为一句，并以精确
-`field_key=value` 数值作为依据，避免候选概念中的 provider-like 词元与发布安全门冲突。
-reader 兼容读取历史版本，正式 writer 只发布当前版本。
-预注册稳定性试验使用隔离的 legacy v3 构建器，继续保留旧版示例和重复 `score`。
+- Every sentence references at least one real candidate field or its approved natural-language label.
+- References to `source_topics`, `source_concepts`, `topic`, `name`, `symbol`, `sector`, `industry`, or `confidence_label` contain the exact candidate value.
+- Values from `source_topics` and `source_concepts` are not relabeled across fields or grouped under a single label; explicit field/value references are required.
+- A provider/model-like token in candidate data is treated as data only inside `<approved field label>：[<exact candidate value>]`. The same token elsewhere is still rejected as system metadata.
+- Explicit references outside the candidate-field allowlist are rejected.
+- After Unicode normalization, Cyrillic/Greek confusables, domains, emails, IP addresses, provider/model metadata, credentials, and secrets are rejected.
+- Trading instructions, target prices, guaranteed returns, `风险分`, reversed stability semantics, and common external or future factual claims are rejected.
 
-创建 artifact 时还会进行 fail-closed 校验：
+## Structural illustration
 
-- 每个句子至少引用一个实际存在的候选字段或其获批自然语言标签
-- 引用 `source_topics`、`source_concepts`、`topic`、`name`、`symbol`、`sector`、
-  `industry` 或 `confidence_label` 时，句中必须原样包含该候选字段的实际值
-- `source_topics` 与 `source_concepts` 的值不能跨字段改名或混在同一个标签下。Prompt
-  要求逐个输出显式的字段/值引用
-- 候选值若包含类似 provider/model 的词元，只有在
-  `<获批字段标签>：[<精确候选值>]` 中才按候选数据处理。同一句其他位置的相同词元仍会
-  被系统元数据门禁拒绝
-- 拒绝不属于候选字段白名单的显式字段引用
-- Unicode 规范化后拒绝 Cyrillic/Greek confusable、域名、邮件、IP 地址、provider/model、
-  凭据和 secret
-- 拒绝交易指令、目标价、保证收益、`风险分`、稳定性语义颠倒以及常见外部或未来事实
-  表述。
-
-## 简化示例
+The following historical-style illustration shows the JSON shape. It is not a current-version validation fixture: its hashes are omitted and current production commentary requires exact numeric references.
 
 ```json
 {
@@ -207,10 +134,10 @@ reader 兼容读取历史版本，正式 writer 只发布当前版本。
   "selection_method": "llm_candidate_rerank",
   "lineage": {
     "candidate_path": "/path/to/candidates.json",
-    "input_sha256": "省略",
-    "candidate_symbols_sha256": "省略",
-    "prompt_sha256": "省略",
-    "response_sha256": "省略"
+    "input_sha256": "omitted",
+    "candidate_symbols_sha256": "omitted",
+    "prompt_sha256": "omitted",
+    "response_sha256": "omitted"
   },
   "picks": [
     {
@@ -226,4 +153,4 @@ reader 兼容读取历史版本，正式 writer 只发布当前版本。
 }
 ```
 
-示例中的哈希经过省略。真实结果使用 64 位小写十六进制 SHA-256。
+Real hashes use 64 lowercase hexadecimal SHA-256 characters. Chinese candidate values and A-share commentary are intentionally preserved as market data, not translated protocol values.
