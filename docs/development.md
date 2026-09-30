@@ -1,159 +1,102 @@
-# 开发与检查
+# Development and checks
 
-## 环境
+English · [简体中文](zh-CN/development.md)
 
-需要：
+## Environment
 
-- Python 3.10 至 3.12
-- `uv`
-
-安装锁定依赖：
+Use Python 3.10–3.12 and `uv`. Install locked development dependencies:
 
 ```bash
 uv sync --locked --group dev
 ```
 
-只安装运行依赖：
+For runtime dependencies only:
 
 ```bash
 uv sync --locked --no-dev
 ```
 
-## 统一检查入口
-
-运行完整检查：
+## One quality entry point
 
 ```bash
 uv run python scripts/dev/check.py
 ```
 
-该脚本依次运行：
+The script runs, in order:
 
 1. `uv lock --check`
 2. `ruff check .`
 3. `ruff format --check .`
 4. `ty check`
 5. `pytest`
-6. 维护性 ratchet
-7. wheel 和 sdist 构建
+6. Maintainability ratchet
+7. Wheel and sdist build
 
-任一步骤失败后，脚本会立即返回对应退出码。
-
-项目不再维护 pre-commit 配置、GitHub Actions 质量工作流和 Makefile。团队当前不使用这些入口，继续保留只会形成多份重复命令。
-
-需要远程门禁时，应从 `scripts/dev/check.py` 调用同一套检查，避免重新复制每条命令。
+It stops at the first failure and returns that exit code. The project has no pre-commit configuration or Makefile. GitHub Actions `ci.yml` calls this same entry point; avoid duplicating the check commands into another quality workflow. `pages.yml` separately validates and publishes the website; see [Website maintenance](showcase.md).
 
 ## Ruff
 
-检查 lint：
-
 ```bash
 uv run ruff check .
-```
-
-检查格式：
-
-```bash
 uv run ruff format --check .
 ```
 
-自动格式化：
+To format or apply safe lint fixes:
 
 ```bash
 uv run ruff format .
-```
-
-可安全自动修复的问题：
-
-```bash
 uv run ruff check . --fix
 ```
 
-当前代码风格：
-
-- Python 3.10 语法下限
-- 行宽 88
-- 双引号
-- 4 空格缩进
+Style: Python 3.10 syntax minimum, 88-character lines, double quotes, and four-space indentation.
 
 ## ty
-
-运行类型检查：
 
 ```bash
 uv run ty check
 ```
 
-项目将目标 Python 版本固定为 3.10，并检查：
+The target Python version is 3.10 and checked roots are `src`, `scripts`, and `tests`. ty is beta, so it is pinned to an explicit version. Upgrade it together with the lockfile and run the full gate to identify changed diagnostics. It is the sole required type checker.
 
-- `src`
-- `scripts`
-- `tests`
+Compatibility settings are narrowly scoped:
 
-`ty` 当前仍处于 beta，因此开发依赖固定到明确版本。升级 `ty` 时，应单独更新依赖锁并运行完整检查，确认诊断变化来自工具版本还是代码问题。
+- Allow `tomli`/`tomllib` fallback imports across Python versions.
+- In `tests/test_selection.py`, allow intentional invalid-Literal arguments and mutation of frozen models in negative tests.
 
-项目只维护 ty 这一套强制类型检查配置。类型债通过 ty 的局部覆盖规则登记，新增代码继续执行同一套门禁。
+No corresponding diagnostics are disabled globally. Prefer removing overrides when the affected code changes; explain the triggering case and removal plan in a PR before adding one.
 
-### 迁移基线
+## Tests
 
-当前配置只保留以下限定范围的兼容规则：
-
-- 允许 `tomli` 与 `tomllib` 的跨版本回退导入
-- `candidates.py` 暂时忽略一处列表元素收窄差异
-- `providers.py` 暂时忽略一处容器返回类型收窄差异
-- `tests/test_selection.py` 忽略刻意传入错误 Literal 和修改冻结模型的负向测试
-
-这些规则按模块或测试文件限定，没有全局关闭对应诊断。
-
-后续修改相关代码时，应优先移除对应 override。新增 override 需要在 PR 中解释触发场景和收敛计划。
-
-## 测试
-
-运行默认测试和 75% 分支覆盖率门槛：
+Default tests enforce 75% coverage with branch measurement:
 
 ```bash
 uv run pytest
 ```
 
-运行单个文件：
+Run one file or one case:
 
 ```bash
 uv run pytest tests/test_cli.py
-```
-
-运行单个测试：
-
-```bash
 uv run pytest tests/test_cli.py::test_dry_run_is_network_free_and_reports_hashes
 ```
 
-测试不能访问真实 provider。
+Tests must not contact real providers. Inject a caller, transport, or monkeypatch.
 
-provider 行为应通过 caller、transport 或 monkeypatch 注入。
-
-## 维护性检查
+## Maintainability
 
 ```bash
 uv run python scripts/dev/maintainability_metrics.py --ratchet
 ```
 
-当前 ratchet 检查：
+The ratchet checks lines over 100 characters; functions over 100, 250, or 500 lines; file-level `C901` ignores; files over 800 or 1,200 lines; and test files over 1,000 lines. Budgets should only tighten. Explain any relaxation in the PR.
 
-- 超过 100 字符的行
-- 超过 100、250 和 500 行的函数
-- `C901` 文件级忽略项
-- 超过 800 和 1200 行的文件
-- 超过 1000 行的测试文件
-
-预算只应收紧。放宽预算需要在 PR 中说明原因。
-
-## 构建
+## Packaging
 
 ```bash
 uv run python -m build
 ```
 
-构建后可在临时环境验证 wheel：
+Check the wheel in a temporary environment:
 
 ```bash
 uv venv /tmp/aipick-wheel
@@ -162,11 +105,11 @@ cd /tmp
 /tmp/aipick-wheel/bin/aipick --help
 ```
 
-CLI 必须能够在仓库目录外运行。运行时代码不能依赖仓库根目录中的隐式配置或数据文件。
+The CLI must work outside the repository directory. Runtime code must not depend on implicit root-level configuration or data files.
 
-## 依赖变更
+## Dependency changes
 
-修改 `pyproject.toml` 后运行：
+After editing `pyproject.toml`:
 
 ```bash
 uv lock
@@ -174,14 +117,10 @@ uv sync --locked --group dev
 uv run python scripts/dev/check.py
 ```
 
-提交时同时包含 `pyproject.toml` 和 `uv.lock`。
+Commit both `pyproject.toml` and `uv.lock`.
 
-## 提交前检查
+## Before submitting
 
-至少完成：
+Run the full quality entry point. For CLI, input contracts, output schemas, providers, or atomic persistence changes, also exercise relevant dry-run commands and verify that error paths do not write files.
 
-```bash
-uv run python scripts/dev/check.py
-```
-
-修改 CLI、输入契约、输出 schema、provider 或原子写入逻辑时，还应运行相关命令的 dry-run，并确认错误路径不会写入文件。
+Update English and Chinese reference documentation together. Keep commands, field names, internal identifiers, and persisted values stable across languages.

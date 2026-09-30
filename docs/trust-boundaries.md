@@ -1,68 +1,43 @@
-# 时间与证据边界
+# Time and evidence boundaries
 
-本项目会记录输入、prompt、模型响应和输出之间的关系，同时明确这些记录能够证明什么，以及不能证明什么。
+English · [简体中文](zh-CN/trust-boundaries.md)
 
-## 日期字段
+The tool records the relationship between input, Prompt, model response, and output. These records help inspect a run, but their proof has limits.
 
-### `candidate_observation_date`
+## Dates
 
-候选数据对应的市场观测日。
+- `candidate_observation_date`: the market observation day represented by the data.
+- `selection_as_of`: the signal date supplied by `--as-of`.
 
-### `selection_as_of`
-
-本次选择信号日期，由 `--as-of` 提供。
-
-候选观测日可以早于选择信号日期，不能晚于选择信号日期。
-
-常见流程：
+The observation date may precede the signal date, but cannot follow it. A common workflow is:
 
 ```text
-D 日收盘数据完成
-D 日或 D+1 生成候选池
-D+1 形成选择信号
+Day D: closing data becomes available
+Day D or D+1: generate the candidate pool
+Day D+1: select using --as-of=D+1
 ```
 
-### `candidate_generated_at`
+## Generation status (`temporal_status`)
 
-候选 manifest 的生成时间。
+| Value | Meaning |
+| --- | --- |
+| `contemporaneous` | Generated on the signal date in the market's time zone, with no detected inversion where the candidate manifest is later than the result |
+| `retrospective_simulation` | Generated after the signal date; suitable for replay or research, not a real same-day signal |
 
-该字段必须带时区，并且不能晚于最终选择结果的 `generated_at`。
+`contemporaneous` describes date relationships only; it is not strict historical-existence proof.
 
-### `generated_at`
+## Assurance (`point_in_time_assurance`)
 
-选择结果的生成时间，结果文件中统一保存为 UTC。
+| Value | Meaning |
+| --- | --- |
+| `signal_date_only` | Supported A-share contract with observation day, cutoff, and generation time; still lacks external publication receipts or strict historical-existence proof |
+| `unverified` | Generic JSON or CSV whose timing contract cannot be confirmed |
 
-## `temporal_status`
+Self-reported input fields cannot upgrade assurance.
 
-### `contemporaneous`
+## Fixed limits
 
-结果在对应市场的 `selection_as_of` 当日生成，并且没有发现候选 manifest 晚于结果生成时间的因果倒置。
-
-该状态只描述生成日期关系。
-
-### `retrospective_simulation`
-
-结果在 `selection_as_of` 之后生成。
-
-这种结果可以用于复现或研究，不能包装成当日真实信号。
-
-## `point_in_time_assurance`
-
-### `signal_date_only`
-
-输入符合受支持的 A 股候选契约，并且包含完整的观测日、数据截点和生成时间信息。
-
-该级别仍缺少外部发布回执或其他严格历史存在证明。
-
-### `unverified`
-
-输入来自通用 JSON 或 CSV，项目无法确认其时点契约。
-
-输入中的自报字段不能自行提升 assurance 等级。
-
-## 固定限制
-
-所有输出固定包含：
+All selections include:
 
 ```json
 {
@@ -71,76 +46,27 @@ D+1 形成选择信号
 }
 ```
 
-原因包括：
+A hash identifies content, not its historical existence time. The upstream rotation data lacks verified publication receipts; candidate files alone cannot establish out-of-sample validity. Pools rebuilt after the observation date are not qualified out-of-sample results. The details are recorded in `evidence_limitations`.
 
-- 文件哈希只能标识内容
-- 文件哈希不能证明历史存在时间
-- 上游 rotation 缺少经过验证的发布回执
-- 候选文件本身不能建立样本外有效性
-- 观测日之后重建的候选池不属于正式样本外结果
+## What hashes can prove
 
-具体限制会记录在 `evidence_limitations`。
+The record includes hashes for the input, candidate symbol set, Prompt, and raw provider response. They can detect content changes, identify the materials behind a result, and compare inputs across runs.
 
-## 哈希的作用
+They cannot prove historical publication time, tradability, out-of-sample validity, or future profitability.
 
-项目记录：
+## Trading limits
 
-- 输入文件哈希
-- 候选股票集合哈希
-- prompt 哈希
-- provider 原始响应哈希
+The upstream value `execution_not_before=next_trading_session` is recorded as supplied. This project has no exchange calendar or execution module, so it does not verify:
 
-这些哈希可以用于：
+- The actual next trading day, holidays, or temporary closures.
+- Data availability at the open.
+- Suspensions or price limits.
+- Fill prices, slippage, transaction costs, or executable quantities.
 
-- 检查内容是否发生变化
-- 确认结果对应哪一份输入和 prompt
-- 对比两次运行是否使用相同材料
+An independent execution or backtesting system must supply trading-level evidence.
 
-这些哈希不能用于：
+## How to describe results
 
-- 证明文件在历史某个时间已经发布
-- 证明数据当时可以交易
-- 证明结果具备样本外有效性
-- 证明策略能够获得未来收益
+Treat the output as a constrained model-ranking record. Real runs retain original candidates, full numeric ranking, exact Prompt and parameters, sanitized HTTP information, raw response, requested and actual model identity, extracted model text, rejection details for malformed responses, final selection, timing, and file hashes.
 
-## 交易相关限制
-
-上游可以声明：
-
-```text
-execution_not_before=next_trading_session
-```
-
-项目会原样记录该字段。
-
-项目没有交易所日历和订单执行模块，因此不会验证：
-
-- 实际下一交易日
-- 节假日和临时休市
-- 开盘时数据是否已经可得
-- 停牌和涨跌停状态
-- 成交价格
-- 滑点和交易成本
-- 实际可成交数量
-
-需要交易级证据时，应由独立的执行或回测系统补充。
-
-## 使用建议
-
-将结果视为经过约束的模型重排记录。
-
-正式运行会在证据目录中保留：
-
-- 候选池原文件和完整数值排名
-- 精确 prompt、模型参数和脱敏 HTTP 请求信息
-- 模型服务原始响应、请求模型别名、响应实际模型和模型正文
-- 格式无效响应的拒绝状态与提取错误
-- 选择结果、生成时间和逐文件哈希
-
-研究报告还应补充：
-
-- 运行命令
-- 外部数据发布回执
-- 后续评估方法
-
-缺少这些材料时，应降低结论强度，避免把一次可复现运行描述成严格的历史投资证据。
+Research reports should also document the command, external publication receipts, and subsequent evaluation method. Without these, avoid presenting a reproducible run as strict historical investment evidence.

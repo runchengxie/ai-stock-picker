@@ -14,7 +14,7 @@ from typing import TypedDict, cast
 from .alias_contracts import alias_maps_sha256
 from .bundle_paths import safe_bundle_path
 from .candidates import is_hot_sector_contract
-from .contracts import Market, SelectionArtifact, Style
+from .contracts import SelectionArtifact
 from .evidence_contracts import selection_contracts
 from .providers import (
     ProviderExchange,
@@ -188,11 +188,11 @@ def _archived_selection_plan(
     selection_as_of = _manifest_date(manifest, "selection_as_of")
     parameter_schema, inference = _archived_inference_parameters(manifest, market_value)
     plan = build_selection_plan(
-        market=cast(Market, market_value),
+        market=market_value,
         candidates_path=candidate_path,
         as_of=selection_as_of,
         top_n=_strict_int(manifest.get("top_n"), "top_n"),
-        style=cast(Style, style_value),
+        style=style_value,
         model=_manifest_string(manifest, "model"),
         provider_parameter_schema=parameter_schema,
         thinking=inference["thinking"] if inference is not None else None,

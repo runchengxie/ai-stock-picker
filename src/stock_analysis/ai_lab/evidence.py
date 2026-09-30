@@ -331,7 +331,7 @@ def load_stability_trial(trial_path: str | Path) -> SelectionPlan:
         top_n=_strict_int(trial.get("top_n"), "top_n"),
         style=style,
         model=str(trial.get("model") or ""),
-        provider_parameter_schema=cast(ProviderParameterSchema, parameter_schema),
+        provider_parameter_schema=parameter_schema,
         thinking=inference["thinking"] if inference is not None else None,
         reasoning_effort=(
             inference["reasoning_effort"] if inference is not None else None

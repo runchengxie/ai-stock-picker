@@ -1,31 +1,31 @@
-# 项目文档
+# Documentation
 
-根目录的 `README.md` 只保留安装和首次运行所需的信息。本目录收录输入契约、输出格式、时间边界、架构和开发流程。
+English · [简体中文](zh-CN/README.md)
 
-## 使用文档
+Start with the [project README](../README.md): install the tool, then run the sample without an API key. These guides are organized by what you want to do next.
 
-- [输入格式](input-formats.md)
-- [输出格式](output-artifact.md)
-- [Selection Validation Receipt](validation-receipt.md)
-- [时间与证据边界](trust-boundaries.md)
-- [证据归档与稳定性试验](evidence-and-stability.md)
+## Everyday use
 
-## 维护文档
+| I want to… | Read |
+| --- | --- |
+| Configure keys, choose options, or resolve an error | [Usage guide](usage.md) |
+| Prepare my candidate file | [Input formats](input-formats.md) |
+| Understand the result JSON | [Output format](output-artifact.md) |
+| Try the bundled samples | [Examples](../examples/README.md) |
 
-- [项目架构](architecture.md)
-- [开发与检查](development.md)
+## Research and integration
 
-## 文档维护约定
+| I want to… | Read |
+| --- | --- |
+| Check inputs, prompts, responses, and file integrity | [Evidence and stability](evidence-and-stability.md) |
+| Run repeated, anonymous, or controlled experiments | [Research guide](shadow-research.md) |
+| Understand what the record can prove | [Time and evidence boundaries](trust-boundaries.md) |
+| Validate a result in a downstream system | [Validation receipt](validation-receipt.md) |
 
-修改以下内容时，需要同步更新相应文档：
+## Development and maintenance
 
-- CLI 参数
-- 环境变量
-- 支持的输入格式
-- 默认模型和 style
-- 输出字段
-- 时间与证据语义
-- 开发检查命令
-- Python 支持版本
+- [Architecture](architecture.md): execution flow and module responsibilities.
+- [Development](development.md): environment, quality checks, and tests.
+- [Website and publishing](showcase.md): local preview, translations, and GitHub Pages.
 
-根目录 README 面向第一次接触项目的使用者。字段级说明和内部设计放在本目录，避免入口文档再次长成团队会议纪要。
+English is authoritative. Chinese translations are reference material. Update both languages when changing CLI options, environment variables, input or output formats, default models, styles, timing semantics, development commands, or Python support. Keep the project README focused on first use; put field contracts and internal details here.

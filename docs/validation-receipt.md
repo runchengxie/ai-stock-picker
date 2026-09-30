@@ -1,6 +1,10 @@
-# Selection Validation Receipt
+# Selection validation receipt
 
-`aipick validate` 默认保持现有向后兼容输出。下游需要可绑定到具体 selection 文件的机器验证凭据时，显式传入 `--validation-receipt`。
+English · [简体中文](zh-CN/validation-receipt.md)
+
+For downstream developers: validate a selection with the owner CLI, then save a receipt binding the consumed result to its inputs. Ordinary command-line use does not require constructing these fields.
+
+`aipick cn validate` retains its backward-compatible output by default. Add `--validation-receipt` when you need a machine-readable receipt bound to the specific selection file:
 
 ```bash
 uv run aipick cn validate \
@@ -9,7 +13,7 @@ uv run aipick cn validate \
   --validation-receipt
 ```
 
-如果同时提供 append-only evidence 目录：
+Include the append-only archive when available:
 
 ```bash
 uv run aipick cn validate \
@@ -21,7 +25,7 @@ uv run aipick cn validate \
 
 ## Receipt contract
 
-当前 receipt：
+Current shape:
 
 ```json
 {
@@ -41,28 +45,28 @@ uv run aipick cn validate \
 }
 ```
 
-`selection_sha256` 直接对传给 owner validator 的 selection 文件原始字节计算，因此下游可以拒绝 receipt 与 selection 不匹配的组合。
+`selection_sha256` hashes the exact selection bytes passed to the owner validator, so consumers can reject a receipt paired with a different file.
 
-提供 `--evidence-dir` 且 owner evidence 校验通过时：
+When `--evidence-dir` is supplied and evidence validation passes:
 
-- `response_sha256_verification` 为 `byte_exact_evidence`；
-- `evidence_manifest_sha256` 为 evidence 目录中 `manifest.json` 的 SHA-256；
-- owner validator 仍会先确认 evidence 内的 `selection.json` 与传入 selection 文件逐字节一致。
+- `response_sha256_verification` is `byte_exact_evidence`.
+- `evidence_manifest_sha256` is the archive's `manifest.json` SHA-256.
+- The validator first checks that archived `selection.json` and the supplied file are byte-identical.
 
-未提供 evidence 目录时，`evidence_manifest_sha256` 为 `null`。这表示 selection/candidate/prompt 等 owner contract 已复验，但原始 provider response 没有通过 byte-exact evidence 重新绑定。
+Without evidence, `evidence_manifest_sha256` is `null`: selection, candidate, and Prompt contracts were revalidated, but the raw provider response was not rebound through byte-exact evidence.
 
-## 信任边界
+## Trust boundary
 
-Receipt 只证明 owner validator 对**这份 selection 字节**执行并通过了声明的校验。它不会：
+The receipt proves only that the owner validator passed the declared checks on **these selection bytes**. It does not:
 
-- 将 `strict_point_in_time=false` 升级为严格 PIT；
-- 将 `eligible_as_oos_evidence=false` 升级为 OOS；
-- 证明模型训练数据不存在未来信息；
-- 代替外部可信时间戳；
-- 将 customer commentary 包装成独立事实核验。
+- Upgrade `strict_point_in_time=false` to strict point-in-time proof.
+- Upgrade `eligible_as_oos_evidence=false` to qualified out-of-sample evidence.
+- Prove that model training data contains no future information.
+- Replace an external trusted timestamp.
+- Turn customer commentary into independent fact-checking.
 
-下游 adapter 必须重新计算 selection SHA-256 并与 receipt 比较。不能只检查 `valid=true`。
+Downstream adapters must recompute the selection SHA-256 and compare it with the receipt. Checking only `valid=true` is insufficient.
 
-## 兼容性
+## Compatibility
 
-不传 `--validation-receipt` 时，`aipick validate` 的原有 JSON 输出保持不变。Receipt contract 发生破坏性变更时应发布新的 `schema_version`，不能原地重解释 `1.0.0`。
+Without `--validation-receipt`, existing validation JSON output is unchanged. Breaking receipt-contract changes require a new `schema_version`; do not reinterpret `1.0.0` in place.
