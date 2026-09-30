@@ -53,5 +53,6 @@
   "footer.limit": "For research. Not investment advice. AI commentary is based on input fields and is not independently fact-checked. Traceable records do not establish strict historical timing or guarantee returns.",
   "footer.source": "Source on GitHub ↗",
   "footer.docs": "All documentation ↗",
-  "a11y.skip": "Skip to content"
+  "a11y.skip": "Skip to content",
+  "nav.landmark": "Main navigation"
 }

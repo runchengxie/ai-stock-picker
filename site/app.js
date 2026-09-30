@@ -32,6 +32,10 @@
       element.textContent =
         selected[key] ?? english[key] ?? element.textContent;
     });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+      const key = element.dataset.i18nAriaLabel;
+      element.setAttribute("aria-label", selected[key] ?? english[key]);
+    });
     document.title = selected["page.title"] ?? english["page.title"];
     document.querySelector('meta[name="description"]').content =
       selected["page.description"] ?? english["page.description"];

@@ -53,5 +53,6 @@
   "footer.limit": "仅用于研究，不构成投资建议。AI 解读基于输入字段，未经独立事实核验。可追溯的记录不代表严格历史时点证明，也不保证收益。",
   "footer.source": "GitHub 源码 ↗",
   "footer.docs": "全部文档 ↗",
-  "a11y.skip": "跳转到正文"
+  "a11y.skip": "跳转到正文",
+  "nav.landmark": "主导航"
 }

@@ -97,7 +97,7 @@ OpenAI adapter 使用 Responses API 的 `text.format` strict JSON Schema、`stor
 内嵌相同的 decision plan/launch receipt bytes。manifest 和 validator summary 暴露
 `decision_plan_sha256`、`launch_receipt_sha256` 与 `evidence_status=prospective_bound`。
 任一内容哈希、provider/model、campaign/date/arm、Prompt 或 candidate 绑定不一致都会失败。
-没有 receipt 的既有 cosplay 只能标为 `legacy_unbound`。标准 `.8` 路径缺少任一工件时在
+没有 receipt 的既有演练 只能标为 `legacy_unbound`。标准 `.8` 路径缺少任一工件时在
 网络调用前 fail closed。交易日 registry 和整日 watchdog 仍由外部 control plane 负责。
 历史 `1.1.0` manifest 若三个 lineage 字段全部缺失，也只读归类为 `legacy_unbound`。
 字段只出现一部分则视为损坏并拒绝。

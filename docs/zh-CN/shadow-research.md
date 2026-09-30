@@ -60,7 +60,7 @@ uv run aipick cn shadow-day \
 ```
 
 缺少任一工件时，标准 `.8 shadow-day` 在调用 provider 前 fail closed。显式注入 caller 的
-旧 cosplay 仍可重放，但 manifest/validator 只能标记为 `legacy_unbound`，不会冒充
+旧版演练 仍可重放，但 manifest/validator 只能标记为 `legacy_unbound`，不会冒充
 `prospective_bound`。
 
 历史 `.7` 进程中断导致 repetition 缺失时，可使用无网络 watchdog 将缺失单元写为 tombstone：
