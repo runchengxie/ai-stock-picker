@@ -4,6 +4,10 @@ English · [简体中文](zh-CN/README.md)
 
 Start with the [project README](../README.md): install the tool, then run the sample without an API key. These guides are organized by what you want to do next.
 
+## Research results, in plain language
+
+Start with the [results page](https://runchengxie.github.io/ai-stock-picker/) and [experiment notes](research/README.md). They explain what was tested, what happened, and what remains unproven.
+
 ## Everyday use
 
 | I want to… | Read |

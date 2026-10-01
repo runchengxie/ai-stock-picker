@@ -4,6 +4,10 @@
 
 第一次使用请从 [README](README-project.md) 开始：先安装，再用示例做一次无需密钥的试运行。这里按你接下来要完成的任务组织文档。
 
+## 先用大白话看研究结果
+
+先看[结果页](https://runchengxie.github.io/ai-stock-picker/)和[实验笔记](research/README.md)：试了什么、结果怎样、还有什么不能确定。
+
 ## 日常使用
 
 | 我想…… | 阅读 |

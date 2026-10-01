@@ -1,4 +1,15 @@
-# Research: repeated runs and controlled experiments
+# Repeat a decision and check whether it changes
+
+English · [简体中文](zh-CN/shadow-research.md)
+
+A single model answer is not enough to show reliability. Freeze the same candidates and settings, run the test repeatedly, and compare the answers. Keep failures too.
+
+To read completed experiments, use the [plain-language notes](research/README.md). To run the tool once, use the [usage guide](usage.md).
+
+A shadow run is a research run kept separate from official selections. Some calls need a model API; checking saved evidence can be done offline. These tests do not establish investment returns.
+
+<details>
+<summary>Run an experiment: commands and technical terms</summary>
 
 English · [简体中文](zh-CN/shadow-research.md)
 
@@ -79,3 +90,5 @@ uv run aipick cn validate-shadow-campaign --campaign-root /absolute/path/shadow/
 New partitions use `campaign/arm/provider--model/date/repetition`. Frozen `.7` plans, old directories, and Borda consensus remain rebuilt and validated read-only under their original contract; `.8` does not overwrite them.
 
 For archive contents and anonymous controls, see [Evidence and stability](evidence-and-stability.md).
+
+</details>
