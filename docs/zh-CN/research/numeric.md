@@ -1,3 +1,11 @@
+---
+title: "新版数值规则，结果好一些了吗？"
+summary: "把新版打分规则和持仓保留缓冲，与之前的数值选股结果做比较。"
+date: 2026-07-17
+language: zh-CN
+slug: numeric
+---
+
 # 新版数值规则，结果好一些了吗？
 
 [English](../../research/numeric.md) · 简体中文参考译文；如有差异，以英文为准。

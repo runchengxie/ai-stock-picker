@@ -1,3 +1,11 @@
+---
+title: "换个输入方式，答案还靠谱吗？"
+summary: "通过打乱顺序和隐藏股票身份，检查输入顺序或名称是否会改变模型的选择。"
+date: 2026-07-16
+language: zh-CN
+slug: stability
+---
+
 # 换个输入方式，答案还靠谱吗？
 
 [English](../../research/stability.md) · 简体中文参考译文；如有差异，以英文为准。

@@ -1,3 +1,11 @@
+---
+title: "Pro 比 Flash 更有用吗？"
+summary: "用相同候选股比较 Flash 和 Pro，看看更强的模型能否带来更有用的选择。"
+date: 2026-07-16
+language: zh-CN
+slug: models
+---
+
 # Pro 比 Flash 更有用吗？
 
 [English](../../research/models.md) · 简体中文参考译文；如有差异，以英文为准。

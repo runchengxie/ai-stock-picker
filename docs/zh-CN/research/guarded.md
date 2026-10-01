@@ -1,3 +1,11 @@
+---
+title: "第一版规则调整，改善收益了吗？"
+summary: "把简单的动量和稳定性调整，与原数值 Top10 做历史回放比较。"
+date: 2026-07-16
+language: zh-CN
+slug: guarded
+---
+
 # 第一版规则调整，改善收益了吗？
 
 [English](../../research/guarded.md) · 简体中文参考译文；如有差异，以英文为准。

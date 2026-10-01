@@ -1,3 +1,11 @@
+---
+title: "Daily observations: what do we actually have?"
+summary: "We explain what the available offline rehearsal shows and why it is not a verified daily performance record."
+date: 2026-07-18
+language: en
+slug: daily
+---
+
 # Daily observations: what do we actually have?
 
 English · [简体中文](../zh-CN/research/daily.md)
