@@ -3,9 +3,9 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "scripts/site/**", "tests/site/**", ".github/workflows/pages.yml"]
   pull_request:
-    paths: ["site/**", ".github/workflows/pages.yml"]
+    paths: ["site/**", "scripts/site/**", "tests/site/**", ".github/workflows/pages.yml"]
   workflow_dispatch:
 
 permissions:
@@ -22,22 +22,33 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-      - name: Check static assets
+      - name: Check static assets and metric behavior
         run: |
           node --check site/app.js
+          node --check site/tool.js
+          node --test tests/site/*.test.mjs
           python -m json.tool site/locales/en.json > /dev/null
           python -m json.tool site/locales/zh-CN.json > /dev/null
-          test -s site/index.html
-          test -s site/styles.css
-          test -s site/icon.svg
+      - name: Download the pinned reviewed snapshot
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          release_tag=$(python -c 'import json; print(json.load(open("site/research-source.json"))["release_tag"])')
+          gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" \
+            --pattern research.json --dir "$RUNNER_TEMP/aipick-research-data"
+      - name: Check provenance and stage the public site
+        run: |
+          python scripts/site/build.py \
+            --snapshot "$RUNNER_TEMP/aipick-research-data/research.json" \
+            --output "$RUNNER_TEMP/aipick-pages-site"
       - name: Configure Pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v5
-      - name: Upload only the public site
+      - name: Upload only the staged public site
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/upload-pages-artifact@v4
         with:
-          path: site
+          path: ${{ runner.temp }}/aipick-pages-site
   deploy:
     if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     needs: build

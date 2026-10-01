@@ -1,49 +1,75 @@
-# Website and automated publishing
+# Research website: preview and update
 
 English · [简体中文](zh-CN/showcase.md)
 
-The [project website](https://runchengxie.github.io/ai-stock-picker/) introduces the tool and links to guides. It is a static page, not a live stock dashboard. It makes no provider calls and requires no API keys.
+The [website](https://runchengxie.github.io/ai-stock-picker/) leads with research findings. The tool introduction and installation walkthrough are on `tool.html`. Neither page calls a model or needs an API key.
 
-## Files
+## What the website shows
 
-- `site/index.html`: semantic page structure and complete English fallback content.
-- `site/styles.css`: responsive layout, visible keyboard focus, and reduced-motion support.
-- `site/app.js`: locale loading, language selection, and localized documentation links.
-- `site/locales/en.json` and `zh-CN.json`: human-facing copy under stable semantic keys.
-- `.github/workflows/pages.yml`: asset validation and Pages publication.
+Five archived studies cover input-order stability, Flash/Pro comparison, a six-month rule replay, revised numeric rules, and lower-turnover portfolios. Daily observations are a separate section. The reviewed October 1, 2026 snapshot has no verified continuous daily series; the July 18 offline rehearsal is clearly separated.
+
+Holding-period controls compare matched historical results. Model tests keep ranking validity separate from complete-result usability. Missing returns are not zeros, failed runs stay visible, and no daily-return curve is fabricated. Plain-language explanations are in [Research notes](research/README.md).
+
+## Where the numbers live
+
+Generated snapshots and preview builds stay outside the source repository. `site/research-source.json` records a release tag and SHA-256 for the reviewed `research.json` asset. Actions downloads that exact asset, checks its digest and evidence classification, then stages the site under the runner's temporary directory.
+
+The snapshot is a public aggregate, not a copy of private raw responses. It contains reviewed numbers and source filenames/content hashes. Original reports and receipts stay in the private owner's research archive. A source hash identifies bytes; it is not an independent historical timestamp. Asset pinning makes a silent release-asset change fail the build.
 
 ## Preview locally
 
-From the repository root:
+Download the pinned asset into your data directory, then build into a new path outside the checkout:
 
 ```bash
-python -m http.server 8000 --directory site --bind 127.0.0.1
+mkdir -p "$HOME/data/ai-stock-picker/research-site/download"
+gh release download research-data-2026-10-01 \
+  --repo runchengxie/ai-stock-picker \
+  --pattern research.json \
+  --dir "$HOME/data/ai-stock-picker/research-site/download"
+python scripts/site/build.py \
+  --snapshot "$HOME/data/ai-stock-picker/research-site/download/research.json" \
+  --output "$HOME/data/ai-stock-picker/research-site/preview"
+python -m http.server 8000 \
+  --directory "$HOME/data/ai-stock-picker/research-site/preview" \
+  --bind 127.0.0.1
 ```
 
-Open `http://localhost:8000`. Use an HTTP server because locale catalogs are loaded with `fetch`; opening the HTML directly as a file is not supported for language switching.
+Open `http://localhost:8000`. Choose an unused output directory for another build. Existing output is never overwritten. If the release pin changes, use its tag instead of the example tag above.
 
-## Languages
+## Update daily observations
 
-English is the default and authoritative version. The selector offers Simplified Chinese and remembers the explicit choice when browser storage is available. Missing translated messages fall back to English. If catalogs cannot load, the complete English HTML stays usable. Documentation links follow the selected locale.
-
-Keep translatable copy in locale catalogs; do not embed Chinese strings in components or change JSON field names by locale. When editing English copy, also update the fallback text in `index.html` and the Chinese catalog. The page contains no dynamic financial values or timestamps requiring locale formatting.
-
-Primary documentation lives in `README.md` and `docs/*.md`. Chinese references live in `docs/zh-CN/`; `README-project.md` is the translated project README, and `README.md` is the translated documentation index. The sample guide is paired with `docs/zh-CN/examples.md`. Each document links to its counterpart. Preserve CLI options and protocol values across translations; market-specific A-share commentary remains Chinese even in English documentation.
-
-## Publish with Actions
-
-In repository Settings → Pages, select **GitHub Actions** as the source. No custom domain or repository secret is needed for the static page.
-
-The Pages workflow validates JavaScript syntax and JSON catalogs on relevant pull requests. On changes to `site/**` or its workflow merged into `main`, it uploads **only `site/`** and deploys to the `github-pages` environment. Manual dispatch from `main` also works. Pull requests and other branches cannot deploy. Deployment has narrowly scoped `pages: write` and `id-token: write` permissions; normal validation has only `contents: read`.
-
-The implementation follows [GitHub's custom workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages). Python quality checks stay in the existing CI workflow using `scripts/dev/check.py`.
-
-## Verify a change
+A daily row must come from a real owner day bundle validated by `validate_shadow_day`, not from a caller's self-reported `valid=true`. The importer rejects offline/unbound rehearsals and exports only an allowlisted public summary:
 
 ```bash
-node --check site/app.js
-python -m json.tool site/locales/en.json > /dev/null
-python -m json.tool site/locales/zh-CN.json > /dev/null
+uv run python scripts/site/export_daily.py \
+  --snapshot /absolute/path/research.json \
+  --day-dir /absolute/path/campaign/arm/provider--model/YYYY-MM-DD \
+  --output "$HOME/data/ai-stock-picker/research-site/next-research.json"
 ```
 
-Also inspect desktop and mobile layouts, switch languages, reload to check persistence, follow documentation links, and verify that blocked storage or failed catalog requests leave the page readable. After merging, confirm the Pages workflow succeeded and the public URL serves the updated content.
+Repeat `--day-dir` for additional bundles. Validation includes repetitions, consensus, and frozen launch lineage. Failed terminal states are retained. It does not compute profits or upgrade timing/out-of-sample status.
+
+Review the combined snapshot, reconcile counts and definitions, record a new review date, and publish it as a **new** research-data release asset. Update the release tag and SHA-256 in `site/research-source.json` in a PR. Do not replace the old release asset. Historical study fields are tied to those specific experiments; adding a new experiment requires updating the contract, charts, and notes, not overwriting old findings.
+
+A GitHub runner cannot read the private host's filesystem. Preparing and reviewing a new snapshot happens separately from deployment; the site is not claiming automatic daily data collection.
+
+## Languages and interaction
+
+English is primary. `site/locales/en.json` and `zh-CN.json` hold copy under stable semantic keys. The selected language is remembered when browser storage permits. Documentation links follow it, dates and numbers use the selected locale with an explicit UTC date display, and missing messages fall back to English.
+
+`site/app.js` renders the research views; `research-model.mjs` owns small tested metric/view helpers. `tool.js` maintains the installation subpage. Both use relative asset paths for GitHub project Pages. The generated HTML includes a readable English summary if JavaScript or data loading fails.
+
+Keep English HTML fallback text aligned with the catalogs. Update English and Chinese research notes together. Do not translate CLI options, field names, or persisted identifiers.
+
+## Validation and deployment
+
+Run the existing Python quality gate, including publishing tests:
+
+```bash
+uv run python scripts/dev/check.py
+node --test tests/site/*.test.mjs
+```
+
+Inspect desktop/mobile views, language switching, source details, study and holding-period controls, missing-data states, and the tool subpage. Verify displayed calculations against the snapshot.
+
+Pages Actions runs frontend checks and the real pinned-data build on PRs. It publishes only the staged public site from `main`. Publishing permissions remain scoped to the deploy job, and Python quality checks still use the single existing CI entry point. The design follows [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).

@@ -6,7 +6,7 @@ English · [简体中文](docs/zh-CN/README-project.md)
 
 For example, you already have 30 candidates and want to select 5 with a quality preference. This tool reads your data, asks a model to rank the candidates, checks that the selection stays within your pool and has the right count, then saves a JSON result and a run record.
 
-[Project website](https://runchengxie.github.io/ai-stock-picker/) · [Usage guide](docs/usage.md) · [All documentation](docs/README.md)
+[Research results](https://runchengxie.github.io/ai-stock-picker/) · [Usage guide](docs/usage.md) · [All documentation](docs/README.md)
 
 ## What it does
 
@@ -66,6 +66,10 @@ On success, you receive:
 Existing files and evidence directories are never overwritten. Choose a new output path for another run. Replace the sample with your own candidate pool for your research.
 
 For US commands, model options, secure credential files, and common errors, see the [Usage guide](docs/usage.md).
+
+## What did the experiments find?
+
+The [results page](https://runchengxie.github.io/ai-stock-picker/) compares model reliability, historical rule changes, and turnover. The [plain-language notes](docs/research/README.md) explain each result. The reviewed snapshot does not yet include a verified continuous daily series; an offline rehearsal is shown separately.
 
 ## Where to go next
 
