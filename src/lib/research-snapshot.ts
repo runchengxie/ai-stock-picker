@@ -34,5 +34,12 @@ export function renderResearchFallback(snapshot: ResearchSnapshot): string {
     ['Revised numeric rule · three sessions', `${(studies.numeric.primary.NUMERIC.H3.total_return * 100).toFixed(2)}% original · ${(studies.numeric.primary.NUMERIC_V2.H3.total_return * 100).toFixed(2)}% revised`],
     ['Turnover experiment', `${(studies.turnover.rows.true_3d_b15_e8_margin001_maxnew2_carry.target_name_turnover_per_rebalance * 100).toFixed(0)}% turnover · ${(studies.turnover.rows.true_3d_b15_e8_margin001_maxnew2_carry.mean_stale_candidate_fraction * 100).toFixed(2)}% held stocks outside current pool`],
   ];
-  return `<table><caption>Reviewed research results · reviewed ${escapeHtml(snapshot.reviewed_on)}</caption><tbody>${labels.map(([label, value]) => `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}</tbody></table><p>${snapshot.daily.rows.length ? `${snapshot.daily.rows.length} reviewed daily observations` : 'No verified continuous daily series is included.'}</p><p>Historical research only. This is not strict point-in-time or qualified out-of-sample evidence.</p>`;
+  const rehearsal = snapshot.daily.offline_rehearsal;
+  const rehearsalSummary = rehearsal
+    ? `Offline rehearsal on ${escapeHtml(rehearsal.date)} for the ${escapeHtml(rehearsal.signal_date)} signal: ${escapeHtml(rehearsal.model_calls)} model calls. The bounded choice did not change; the veto matched the simple rule. This was not live performance.`
+    : 'No offline rehearsal is included in this snapshot.';
+  const sources = snapshot.sources
+    .map((source) => `<li><code>${escapeHtml(source.file)}</code> · SHA-256 <code>${escapeHtml(source.sha256)}</code></li>`)
+    .join('');
+  return `<table><caption>Reviewed research results · reviewed ${escapeHtml(snapshot.reviewed_on)}</caption><tbody>${labels.map(([label, value]) => `<tr><th scope="row">${escapeHtml(label)}</th><td>${escapeHtml(value)}</td></tr>`).join('')}</tbody></table><p>${snapshot.daily.rows.length ? `${snapshot.daily.rows.length} reviewed daily observations` : 'No verified continuous daily series is included.'}</p><p>${rehearsalSummary}</p><p>Historical research only. This is not strict point-in-time or qualified out-of-sample evidence.</p><details><summary>Source files and SHA-256 fingerprints</summary><ul>${sources}</ul></details>`;
 }

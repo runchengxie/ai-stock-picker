@@ -25,6 +25,9 @@ test('homepage has a base-prefixed stylesheet and readable research fallback', a
   assert.match(html, /research_only|research-only|research only/i);
   assert.match(html, /\/ai-stock-picker\/research\/stability\//);
   assert.doesNotMatch(html, /\/ai-stock-pickerresearch\//);
+  assert.match(html, /Offline rehearsal on 2026-07-18/);
+  assert.match(html, /Source files and SHA-256 fingerprints/);
+  assert.match(html, /[a-f0-9]{64}/);
 });
 
 test('Chinese research notes have base-prefixed theme assets and the correct locale', async () => {
