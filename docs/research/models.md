@@ -1,3 +1,11 @@
+---
+title: "Is Pro more useful than Flash?"
+summary: "We compared Flash and Pro on the same candidates to see whether the stronger model added useful stock choices."
+date: 2026-07-16
+language: en
+slug: models
+---
+
 # Is Pro more useful than Flash?
 
 English · [简体中文](../zh-CN/research/models.md)

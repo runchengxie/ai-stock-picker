@@ -3,9 +3,37 @@ name: Pages
 on:
   push:
     branches: [main]
-    paths: ["site/**", "scripts/site/**", "tests/site/**", ".github/workflows/pages.yml"]
+    paths:
+      [
+        "site/**",
+        "public/**",
+        "src/**",
+        "docs/research/**",
+        "docs/zh-CN/research/**",
+        "scripts/site/**",
+        "tests/site/**",
+        "package.json",
+        "package-lock.json",
+        "astro.config.mjs",
+        "tsconfig.json",
+        ".github/workflows/pages.yml",
+      ]
   pull_request:
-    paths: ["site/**", "scripts/site/**", "tests/site/**", ".github/workflows/pages.yml"]
+    paths:
+      [
+        "site/**",
+        "public/**",
+        "src/**",
+        "docs/research/**",
+        "docs/zh-CN/research/**",
+        "scripts/site/**",
+        "tests/site/**",
+        "package.json",
+        "package-lock.json",
+        "astro.config.mjs",
+        "tsconfig.json",
+        ".github/workflows/pages.yml",
+      ]
   workflow_dispatch:
 
 permissions:
@@ -22,26 +50,47 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
-      - name: Check static assets and metric behavior
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install locked website dependencies
+        run: npm ci
+      - name: Check site source and behavior
         run: |
-          node --check site/app.js
-          node --check site/tool.js
-          node --check site/theme.js
-          node --test tests/site/*.test.mjs
-          python -m json.tool site/locales/en.json > /dev/null
-          python -m json.tool site/locales/zh-CN.json > /dev/null
+          node --check public/app.js
+          node --check public/tool.js
+          node --check public/theme.js
+          node --test tests/site/research-model.test.mjs tests/site/research-notes.test.mjs
+          python -m json.tool public/locales/en.json > /dev/null
+          python -m json.tool public/locales/zh-CN.json > /dev/null
+          npm run check
       - name: Download the pinned reviewed snapshot
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           release_tag=$(python -c 'import json; print(json.load(open("site/research-source.json"))["release_tag"])')
           gh release download "$release_tag" --repo "$GITHUB_REPOSITORY" \
-            --pattern research.json --dir "$RUNNER_TEMP/aipick-research-data"
-      - name: Check provenance and stage the public site
+            --pattern research.json --dir "$RUNNER_TEMP/aipick-research-download"
+      - name: Check provenance and stage the public snapshot
         run: |
-          python scripts/site/build.py \
-            --snapshot "$RUNNER_TEMP/aipick-research-data/research.json" \
-            --output "$RUNNER_TEMP/aipick-pages-site"
+          python scripts/site/stage_snapshot.py \
+            --snapshot "$RUNNER_TEMP/aipick-research-download/research.json" \
+            --output "$RUNNER_TEMP/aipick-research-data/research.json"
+      - name: Build the static Astro site
+        env:
+          AIPICK_RESEARCH_SNAPSHOT: ${{ runner.temp }}/aipick-research-data/research.json
+        run: npm run build -- --outDir "$RUNNER_TEMP/aipick-pages-site"
+      - name: Add the validated browser data asset
+        run: |
+          mkdir -p "$RUNNER_TEMP/aipick-pages-site/data"
+          cp "$RUNNER_TEMP/aipick-research-data/research.json" \
+            "$RUNNER_TEMP/aipick-pages-site/data/research.json"
+      - name: Verify generated routes and fallback content
+        env:
+          AIPICK_SITE_OUTPUT: ${{ runner.temp }}/aipick-pages-site
+        run: node --test tests/site/*.test.mjs
       - name: Configure Pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v5

@@ -1,3 +1,11 @@
+---
+title: "Did the first rule adjustment improve returns?"
+summary: "We replayed a simple momentum and stability adjustment against the original numeric Top10."
+date: 2026-07-16
+language: en
+slug: guarded
+---
+
 # Did the first rule adjustment improve returns?
 
 English · [简体中文](../zh-CN/research/guarded.md)

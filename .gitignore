@@ -49,3 +49,8 @@ strategy_full_project_source.txt
 # Operating system files
 .DS_Store
 Thumbs.db
+
+# Astro and Node website build artifacts
+node_modules/
+dist/
+.astro/

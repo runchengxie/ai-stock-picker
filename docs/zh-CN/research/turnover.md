@@ -1,3 +1,11 @@
+---
+title: "少换几只股票，能解决高换手吗？"
+summary: "测试每次调仓限制新增股票，能否降低换手又避免留着不合适的持仓。"
+date: 2026-07-18
+language: zh-CN
+slug: turnover
+---
+
 # 少换几只股票，能解决高换手吗？
 
 [English](../../research/turnover.md) · 简体中文参考译文；如有差异，以英文为准。

@@ -6,7 +6,7 @@
 
 ## 先用大白话看研究结果
 
-先看[结果页](https://runchengxie.github.io/ai-stock-picker/)和[实验笔记](research/README.md)：试了什么、结果怎样、还有什么不能确定。
+先看[研究结果页](https://runchengxie.github.io/ai-stock-picker/)和[在线实验笔记](https://runchengxie.github.io/ai-stock-picker/zh-CN/research/stability/)：了解试了什么、结果怎样、还有什么不能确定。原始笔记也可在[英文目录](../research/README.md)和[中文目录](research/README.md)阅读。
 
 ## 日常使用
 
@@ -30,6 +30,6 @@
 
 - [项目架构](architecture.md)：调用流程和模块职责。
 - [开发与检查](development.md)：环境、质量检查和测试要求。
-- [展示页与自动发布](showcase.md)：本地预览、语言文案和 GitHub Pages 部署。
+- [展示页与自动发布](showcase.md)：Astro 本地预览、语言文案、数据检查和 GitHub Pages 部署。
 
 英文为权威版本，中文为参考译文；变更时同步更新两种语言。修改 CLI 参数、环境变量、输入或输出格式、默认模型、排序风格、时间语义、开发命令或 Python 版本时，同步更新对应文档。README 保留新人上手所需内容，字段级契约和内部设计放在本目录。

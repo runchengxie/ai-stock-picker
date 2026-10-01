@@ -1,3 +1,11 @@
+---
+title: "Did the revised numeric rule do better?"
+summary: "We compared a revised scoring rule and a retention buffer with earlier numeric selections."
+date: 2026-07-17
+language: en
+slug: numeric
+---
+
 # Did the revised numeric rule do better?
 
 English · [简体中文](../zh-CN/research/numeric.md)

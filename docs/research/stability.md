@@ -1,3 +1,11 @@
+---
+title: "Does changing the input change the answer?"
+summary: "We shuffled and anonymized the same stock candidates to see whether input order or names changed the model picks."
+date: 2026-07-16
+language: en
+slug: stability
+---
+
 # Does changing the input change the answer?
 
 English · [简体中文](../zh-CN/research/stability.md)

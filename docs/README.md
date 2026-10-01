@@ -6,7 +6,7 @@ Start with the [project README](../README.md): install the tool, then run the sa
 
 ## Research results, in plain language
 
-Start with the [results page](https://runchengxie.github.io/ai-stock-picker/) and [experiment notes](research/README.md). They explain what was tested, what happened, and what remains unproven.
+Start with the [research results page](https://runchengxie.github.io/ai-stock-picker/) and the [online experiment notes](https://runchengxie.github.io/ai-stock-picker/research/stability/). The source notes are also available in [English](research/README.md) and [Chinese](zh-CN/research/README.md).
 
 ## Everyday use
 
@@ -30,6 +30,6 @@ Start with the [results page](https://runchengxie.github.io/ai-stock-picker/) an
 
 - [Architecture](architecture.md): execution flow and module responsibilities.
 - [Development](development.md): environment, quality checks, and tests.
-- [Website and publishing](showcase.md): local preview, translations, and GitHub Pages.
+- [Website and publishing](showcase.md): Astro preview, translations, snapshot checks, and GitHub Pages.
 
 English is authoritative. Chinese translations are reference material. Update both languages when changing CLI options, environment variables, input or output formats, default models, styles, timing semantics, development commands, or Python support. Keep the project README focused on first use; put field contracts and internal details here.

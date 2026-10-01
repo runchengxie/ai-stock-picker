@@ -73,6 +73,11 @@ function localizePage() {
     link.href = doc(link.dataset.doc);
   });
   picker.value = locale;
+  document.querySelectorAll("[data-note-slug]").forEach((link) => {
+    const slug = link.dataset.noteSlug;
+    link.href = `${new URL("./", document.querySelector("base").href)}${locale === "zh-CN" ? "zh-CN/" : ""}research/${slug}/`;
+    link.textContent = `${locale === "zh-CN" ? link.dataset.noteZh : link.dataset.noteEn} ↗`;
+  });
 }
 
 function table(headers, rows, caption = "") {

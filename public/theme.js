@@ -38,7 +38,8 @@
   async function updateLabel(label, key) {
     const locale = root.lang === "zh-CN" ? "zh-CN" : "en";
     try {
-      const response = await fetch(`./locales/${locale}.json`);
+      const assetRoot = document.querySelector('link[rel="stylesheet"]')?.href ?? document.baseURI;
+      const response = await fetch(new URL(`./locales/${locale}.json`, assetRoot));
       if (!response.ok) return;
       const catalog = await response.json();
       if (

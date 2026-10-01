@@ -1,3 +1,11 @@
+---
+title: "Can fewer replacements solve high turnover?"
+summary: "We tested whether limiting new stocks at each rebalance could reduce turnover without keeping unsuitable holdings."
+date: 2026-07-18
+language: en
+slug: turnover
+---
+
 # Can fewer replacements solve high turnover?
 
 English · [简体中文](../zh-CN/research/turnover.md)

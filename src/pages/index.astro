@@ -1,0 +1,18 @@
+---
+import { getCollection } from 'astro:content';
+import templateSource from '../templates/index.html?raw';
+import { listResearchNotes } from '../lib/research-notes';
+import { loadResearchSnapshot, renderResearchFallback } from '../lib/research-snapshot';
+
+const snapshot = loadResearchSnapshot();
+const BASE_URL = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
+const notes = listResearchNotes(await getCollection('research'));
+const noteLinks = `<div class="notes-links">${notes.map(({ slug, en, 'zh-CN': zh }) => `<a class="text-link" data-note-slug="${slug}" data-note-en="${en.data.title}" data-note-zh="${zh.data.title}" href="${BASE_URL}research/${slug}/">${en.data.title} ↗</a>`).join('')}</div>`;
+const html = templateSource
+  .replace('<meta charset="utf-8" />', `<meta charset="utf-8" />\n    <base href="${BASE_URL}" />`)
+  .replace('<!-- RESEARCH_FALLBACK -->', renderResearchFallback(snapshot))
+  .replace(/<div class="notes-links">[\s\S]*?<\/div>/, noteLinks)
+  .replaceAll('href="./', `href="${BASE_URL}`)
+  .replaceAll('src="./', `src="${BASE_URL}`);
+---
+<Fragment set:html={html} />
