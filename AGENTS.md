@@ -2,7 +2,7 @@
 
 ## PR review exception
 
-A separate human review may be skipped only when the user explicitly authorizes merging a PR authored by the user or created from work explicitly assigned to the agent. Required checks must still pass and conflicts must be resolved. Never bypass branch protection, rulesets, or an explicit project-owner policy that makes review non-waivable.
+No separate human review is required for a PR authored by the user or for work the user explicitly assigned to the agent; this is standing authorization and need not be repeated for each PR. Required checks must still pass and conflicts must be resolved. Never bypass approvals enforced by GitHub branch protection or rulesets.
 
 ## 项目目标
 
