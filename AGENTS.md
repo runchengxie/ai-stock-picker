@@ -2,7 +2,7 @@
 
 ## PR review exception
 
-No separate human review is required for a PR authored by the user or for work the user explicitly assigned to the agent; this is standing authorization and need not be repeated for each PR. Required checks must still pass and conflicts must be resolved. Never bypass approvals enforced by GitHub branch protection or rulesets.
+No separate human review is required for a PR authored by the user or for work the user explicitly assigned to the agent; this is standing authorization, overrides general review requirements in this file, and need not be repeated for each PR. Required checks must still pass and conflicts must be resolved. Never bypass approvals enforced by GitHub branch protection or rulesets.
 
 ## 项目目标
 
