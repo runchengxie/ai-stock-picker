@@ -83,7 +83,7 @@ def _validate_shape(value: Any, shape: Any) -> None:
             raise ValueError("nested list differs from the public contract")
         for child in value:
             _validate_shape(child, shape[0] if shape else None)
-    elif isinstance(value, (dict, list)):
+    elif isinstance(value, dict | list):
         raise ValueError("nested value differs from the public contract")
 
 
