@@ -184,5 +184,7 @@
   "research.model.pro": "Pro",
   "research.dailyArm.bounded": "Boundary ranking",
   "research.dailyArm.risk_veto": "Risk veto",
-  "research.dailyArm.bounded_ranking": "Boundary ranking"
+  "research.dailyArm.bounded_ranking": "Boundary ranking",
+  "theme.switchToDark": "Use dark mode",
+  "theme.switchToLight": "Use light mode"
 }

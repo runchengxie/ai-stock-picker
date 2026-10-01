@@ -8,6 +8,7 @@
       content="An open-source command-line tool to rank your stock candidates with AI, validate every selection, and keep a traceable record."
     />
     <meta name="theme-color" content="#f7f8f2" />
+    <script src="./theme.js"></script>
     <title>AI Stock Picker — Your shortlist, reviewed by AI</title>
     <link rel="icon" href="./icon.svg" type="image/svg+xml" />
     <link rel="stylesheet" href="./styles.css" />
@@ -32,6 +33,21 @@
           <option value="zh-CN">中文</option>
         </select></label
       >
+      <button
+        class="theme-toggle"
+        id="theme-toggle"
+        type="button"
+        aria-pressed="false"
+        aria-labelledby="theme-toggle-label"
+      >
+        <span class="theme-icon" aria-hidden="true">☾</span>
+        <span
+          class="sr-only"
+          id="theme-toggle-label"
+          data-i18n="theme.switchToDark"
+          >Use dark mode</span
+        >
+      </button>
     </header>
     <main id="main">
       <section class="hero wrap">

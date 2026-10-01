@@ -26,6 +26,7 @@ jobs:
         run: |
           node --check site/app.js
           node --check site/tool.js
+          node --check site/theme.js
           node --test tests/site/*.test.mjs
           python -m json.tool site/locales/en.json > /dev/null
           python -m json.tool site/locales/zh-CN.json > /dev/null

@@ -1,10 +1,60 @@
 :root {
+  color-scheme: light;
   --paper: #f7f8f2;
   --ink: #1b342e;
   --muted: #566860;
   --line: #d9dfd4;
   --mint: #dcebcf;
   --orange: #ac5129;
+  --surface: #fffef9;
+  --surface-raised: #fbfcf6;
+  --surface-tint: #eef1e8;
+  --surface-warm: #fffdf6;
+  --surface-note: #f0f4e8;
+  --badge-bg: #f4e4d7;
+  --badge-ink: #853e20;
+  --chart-track: #e6ebde;
+  --chart-green: #597b63;
+  --chart-orange: #bc7a52;
+  --chart-negative: #ab7056;
+  --good-ink: #3b643c;
+  --fail-ink: #955533;
+  --primary-bg: #1b342e;
+  --primary-fg: #fff;
+  --primary-hover: #2b4c41;
+  --review-bg: #1b342e;
+  --review-fg: #fff;
+  --review-muted: #c5d8cb;
+  --focus: #ac5129;
+}
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #111814;
+  --ink: #e5eee8;
+  --muted: #b0beb5;
+  --line: #35443b;
+  --mint: #293d31;
+  --orange: #e5a27c;
+  --surface: #19211c;
+  --surface-raised: #1b251f;
+  --surface-tint: #202a23;
+  --surface-warm: #1b241e;
+  --surface-note: #253329;
+  --badge-bg: #45332a;
+  --badge-ink: #f1b18b;
+  --chart-track: #35443b;
+  --chart-green: #92ba8a;
+  --chart-orange: #d49a72;
+  --chart-negative: #d19172;
+  --good-ink: #a8d19f;
+  --fail-ink: #f0ad88;
+  --primary-bg: #c4dfc0;
+  --primary-fg: #17231b;
+  --primary-hover: #d6ead2;
+  --review-bg: #26382c;
+  --review-fg: #edf5ed;
+  --review-muted: #c5d8cb;
+  --focus: #efad82;
 }
 * {
   box-sizing: border-box;
@@ -74,6 +124,23 @@ nav {
   font-size: 13px;
   cursor: pointer;
 }
+.theme-toggle {
+  display: inline-grid;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+}
+.theme-toggle:hover {
+  background: var(--surface-tint);
+}
 .hero {
   display: grid;
   grid-template-columns: 1.1fr 1fr;
@@ -139,11 +206,12 @@ h3 {
   font-weight: 600;
 }
 .primary {
-  background: var(--ink);
-  color: #fff;
+  background: var(--primary-bg);
+  color: var(--primary-fg);
 }
 .primary:hover {
-  background: #2b4c41;
+  background: var(--primary-hover);
+  color: var(--primary-fg);
   text-decoration: none;
 }
 .text-link {
@@ -171,7 +239,7 @@ h3 {
   margin-right: 7px;
 }
 .demo {
-  background: #eef1e8;
+  background: var(--surface-tint);
   border: 1px solid var(--line);
   border-radius: 14px;
   padding: 25px;
@@ -189,8 +257,8 @@ h3 {
   letter-spacing: 0.8px;
 }
 .badge {
-  color: var(--orange);
-  background: #f4e4d7;
+  color: var(--badge-ink);
+  background: var(--badge-bg);
   padding: 4px 8px;
   border-radius: 20px;
   letter-spacing: 0;
@@ -221,15 +289,15 @@ h3 {
 }
 .tiles i {
   height: 17px;
-  background: #d6decf;
+  background: var(--line);
   border-radius: 3px;
 }
 .tiles i:nth-child(6n + 1) {
-  background: #839d72;
+  background: var(--chart-green);
 }
 .connector {
   text-align: center;
-  color: #788b78;
+  color: var(--muted);
   font-size: 20px;
   line-height: 1.6;
 }
@@ -238,19 +306,19 @@ h3 {
   align-items: center;
   gap: 15px;
   padding: 14px 18px;
-  background: var(--ink);
+  background: var(--review-bg);
   border-radius: 8px;
-  color: #fff;
+  color: var(--review-fg);
 }
 .review strong,
 .result strong {
   font-size: 13px;
 }
 .review p {
-  color: #c5d8cb;
+  color: var(--review-muted);
 }
 .spark {
-  color: #c5ec9c;
+  color: var(--chart-green);
   font-size: 30px;
   line-height: 1;
 }
@@ -258,7 +326,7 @@ h3 {
   display: flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid #b8c9a9;
+  border: 1px solid var(--chart-green);
   background: var(--mint);
   border-radius: 8px;
   padding: 17px;
@@ -315,7 +383,7 @@ h3 {
   margin-bottom: 0;
 }
 .start-band {
-  background: #e9eee2;
+  background: var(--surface-tint);
   padding-block: 72px;
 }
 .start-grid {
@@ -381,7 +449,7 @@ h3 {
   padding: 24px 20px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fbfcf6;
+  background: var(--surface-raised);
   transition:
     background 0.15s,
     transform 0.15s;
@@ -436,14 +504,14 @@ h3 {
   top: -80px;
   z-index: 10;
   padding: 10px;
-  background: var(--ink);
-  color: white;
+  background: var(--review-bg);
+  color: var(--review-fg);
 }
 .skip:focus {
   top: 10px;
 }
 :focus-visible {
-  outline: 3px solid var(--orange);
+  outline: 3px solid var(--focus);
   outline-offset: 4px;
 }
 html[lang="zh-CN"] h1 {

@@ -184,5 +184,7 @@
   "research.model.pro": "Pro",
   "research.dailyArm.bounded": "边界排序",
   "research.dailyArm.risk_veto": "风险否决",
-  "research.dailyArm.bounded_ranking": "边界排序"
+  "research.dailyArm.bounded_ranking": "边界排序",
+  "theme.switchToDark": "切换到深色模式",
+  "theme.switchToLight": "切换到浅色模式"
 }
