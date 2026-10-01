@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#f7f8f2" />
+    <script src="./theme.js"></script>
     <meta
       name="description"
       content="Reviewed stock-ranking research results, model tests, and daily-observation limitations."
@@ -36,6 +37,21 @@
           <option value="zh-CN">中文</option>
         </select></label
       >
+      <button
+        class="theme-toggle"
+        id="theme-toggle"
+        type="button"
+        aria-pressed="false"
+        aria-labelledby="theme-toggle-label"
+      >
+        <span class="theme-icon" aria-hidden="true">☾</span>
+        <span
+          class="sr-only"
+          id="theme-toggle-label"
+          data-i18n="theme.switchToDark"
+          >Use dark mode</span
+        >
+      </button>
     </header>
     <main id="main" class="wrap research-main">
       <div class="research-heading">
