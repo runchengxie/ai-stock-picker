@@ -1,5 +1,9 @@
 # AGENTS.md
 
+## PR review exception
+
+A separate human review may be skipped only when the user explicitly authorizes merging a PR authored by the user or created from work explicitly assigned to the agent. Required checks must still pass and conflicts must be resolved. Never bypass branch protection, rulesets, or an explicit project-owner policy that makes review non-waivable.
+
 ## 项目目标
 
 本仓库提供严格、可审计的候选股重排工具。
