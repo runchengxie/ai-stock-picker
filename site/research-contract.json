@@ -1,0 +1,322 @@
+{
+  "studies": {
+    "stability": {
+      "source_ids": [
+        null
+      ],
+      "date": null,
+      "calls": null,
+      "days": null,
+      "passed": null,
+      "required": null,
+      "arms": {
+        "canonical": null,
+        "shuffle_101": null,
+        "shuffle_202": null,
+        "shuffle_303": null,
+        "opaque_404": null
+      },
+      "gates": {
+        "protocol_design_complete": {
+          "passed": null,
+          "observed": null
+        },
+        "strict_success_count": {
+          "passed": null,
+          "observed": null,
+          "required_min": null
+        },
+        "canonical_shuffle_mean_overlap": {
+          "passed": null,
+          "observed": null,
+          "comparison_count": null,
+          "required_min": null
+        },
+        "canonical_shuffle_minimum_overlap_dates": {
+          "passed": null,
+          "observed": null,
+          "required_min": null
+        },
+        "canonical_opaque_mean_overlap": {
+          "passed": null,
+          "observed": null,
+          "comparison_count": null,
+          "required_min": null
+        },
+        "position_spearman_interval": {
+          "passed": null,
+          "observed_ci_95": [
+            null
+          ],
+          "required_interval": [
+            null
+          ]
+        },
+        "first_row_uplift_interval": {
+          "passed": null,
+          "observed_ci_95": [
+            null
+          ],
+          "required_upper_max": null
+        }
+      },
+      "rejections": {
+        "selection_validation_failed": null,
+        "unsupported_source_concepts": null,
+        "ungrounded_risk_note_sentence": null,
+        "unsupported_source_topics": null,
+        "trading_advice_or_return_promise": null,
+        "external_or_future_claim": null,
+        "source_concepts_not_bound_to_candidate_value": null,
+        "strict_schema_missing_symbols": null,
+        "reversed_stability_semantics": null
+      },
+      "numeric_overlap": null
+    },
+    "models": {
+      "source_ids": [
+        null
+      ],
+      "date": null,
+      "days": null,
+      "calls": null,
+      "models": {
+        "flash": {
+          "calls": null,
+          "ranking_passes": null,
+          "publication_passes": null,
+          "exact_order_days": null,
+          "shuffle_overlap": null,
+          "opaque_overlap": null,
+          "estimated_cost_cny": null,
+          "latency_seconds": null
+        },
+        "pro": {
+          "calls": null,
+          "ranking_passes": null,
+          "publication_passes": null,
+          "exact_order_days": null,
+          "shuffle_overlap": null,
+          "opaque_overlap": null,
+          "estimated_cost_cny": null,
+          "latency_seconds": null
+        }
+      },
+      "required": null,
+      "return_backtest_executed": null,
+      "phase2_calls": null,
+      "pricing_date": null
+    },
+    "guarded": {
+      "source_ids": [
+        null
+      ],
+      "date": null,
+      "sessions": null,
+      "expected_sessions": null,
+      "api_calls": null,
+      "start": null,
+      "end": null,
+      "cost_bps": null,
+      "returns": {
+        "H1": {
+          "numeric": null,
+          "guarded": null,
+          "active_original_bps": null,
+          "active_corrected_bps": null
+        },
+        "H3": {
+          "numeric": null,
+          "guarded": null,
+          "active_original_bps": null,
+          "active_corrected_bps": null
+        },
+        "H5": {
+          "numeric": null,
+          "guarded": null,
+          "active_original_bps": null,
+          "active_corrected_bps": null
+        }
+      },
+      "missing_sessions": [
+        null
+      ],
+      "name_turnover": {
+        "numeric": null,
+        "guarded": null
+      },
+      "missing_limit_cells": null
+    },
+    "numeric": {
+      "source_ids": [
+        null
+      ],
+      "date": null,
+      "cost_bps": null,
+      "primary": {
+        "NUMERIC": {
+          "H1": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H3": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H5": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          }
+        },
+        "CANDIDATE_POOL_EQW": {
+          "H1": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H3": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H5": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          }
+        },
+        "NUMERIC_V2": {
+          "H1": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H3": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H5": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          }
+        },
+        "NUMERIC_V2_BUFFER15": {
+          "H1": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H3": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          },
+          "H5": {
+            "total_return": null,
+            "sharpe": null,
+            "max_drawdown": null
+          }
+        }
+      },
+      "active": {
+        "NUMERIC_V2": {
+          "H1": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          },
+          "H3": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          },
+          "H5": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          }
+        },
+        "NUMERIC_V2_BUFFER15": {
+          "H1": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          },
+          "H3": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          },
+          "H5": {
+            "mean_daily": null,
+            "annualized_tracking_error": null,
+            "information_ratio": null
+          }
+        }
+      },
+      "name_turnover": {
+        "NUMERIC": null,
+        "CANDIDATE_POOL_EQW": null,
+        "NUMERIC_V2": null,
+        "NUMERIC_V2_BUFFER15": null
+      },
+      "execution_complete": null
+    },
+    "turnover": {
+      "source_ids": [
+        null
+      ],
+      "date": null,
+      "cost_bps": null,
+      "start": null,
+      "end": null,
+      "sessions": null,
+      "rows": {
+        "true_3d_baseline_exit": {
+          "phase_mean_total_return": null,
+          "target_name_turnover_per_rebalance": null,
+          "daily_amortized_target_name_turnover": null
+        },
+        "true_3d_b15_e8_margin001_exit": {
+          "phase_mean_total_return": null,
+          "target_name_turnover_per_rebalance": null,
+          "daily_amortized_target_name_turnover": null
+        },
+        "true_3d_b15_e8_margin001_maxnew2_carry": {
+          "phase_mean_total_return": null,
+          "target_name_turnover_per_rebalance": null,
+          "target_weight_full_l1": null,
+          "mean_stale_candidate_fraction": null
+        },
+        "true_5d_baseline_exit": {
+          "phase_mean_total_return": null,
+          "target_name_turnover_per_rebalance": null,
+          "daily_amortized_target_name_turnover": null
+        },
+        "true_5d_b15_e8_margin001_maxnew2_carry": {
+          "phase_mean_total_return": null,
+          "target_name_turnover_per_rebalance": null,
+          "target_weight_full_l1": null,
+          "mean_stale_candidate_fraction": null
+        }
+      },
+      "execution_data_available": null
+    }
+  },
+  "offline_rehearsal": {
+    "source_ids": [
+      null
+    ],
+    "date": null,
+    "signal_date": null,
+    "model_calls": null,
+    "bounded_changed": null,
+    "veto_matches_rule": null,
+    "decision_binding": null
+  }
+}

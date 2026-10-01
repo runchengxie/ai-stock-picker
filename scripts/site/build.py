@@ -72,6 +72,21 @@ def _check_public(value: Any) -> None:
         raise ValueError("machine paths cannot enter the public snapshot")
 
 
+def _validate_shape(value: Any, shape: Any) -> None:
+    if isinstance(shape, dict):
+        if not isinstance(value, dict) or set(value) != set(shape):
+            raise ValueError("nested fields differ from the public contract")
+        for key, child in shape.items():
+            _validate_shape(value[key], child)
+    elif isinstance(shape, list):
+        if not isinstance(value, list):
+            raise ValueError("nested list differs from the public contract")
+        for child in value:
+            _validate_shape(child, shape[0] if shape else None)
+    elif isinstance(value, (dict, list)):
+        raise ValueError("nested value differs from the public contract")
+
+
 def _validate_daily(daily: dict[str, Any]) -> None:
     if set(daily) != {"rows", "offline_rehearsal"}:
         raise ValueError("daily fields differ from the public contract")
@@ -158,9 +173,14 @@ def validate_snapshot(data: dict[str, Any]) -> None:
     allowed = {"stability", "models", "guarded", "numeric", "turnover"}
     if set(data["studies"]) - allowed:
         raise ValueError("unreviewed study identity")
-    for study in data["studies"].values():
+    shapes = json.loads((ROOT / "site/research-contract.json").read_text())
+    for identity, study in data["studies"].items():
+        _validate_shape(study, shapes["studies"][identity])
         if not study["source_ids"] or not set(study["source_ids"]) <= ids:
             raise ValueError("study has no matching source")
+    rehearsal = data["daily"]["offline_rehearsal"]
+    if rehearsal is not None:
+        _validate_shape(rehearsal, shapes["offline_rehearsal"])
     _validate_history(data["studies"])
     _validate_daily(data["daily"])
 

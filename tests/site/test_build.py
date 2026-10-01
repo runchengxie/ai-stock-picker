@@ -90,13 +90,15 @@ def test_build_output_must_stay_outside_checkout() -> None:
 def test_disagreeing_arm_totals_are_rejected() -> None:
     builder = load_builder()
     data = snapshot()
+    shape = json.loads((ROOT / "site/research-contract.json").read_text())
     data["studies"]["stability"] = {
+        **shape["studies"]["stability"],
         "source_ids": ["report"],
         "calls": 100,
         "days": 20,
         "passed": 34,
         "required": 95,
-        "arms": {"canonical": 35},
+        "arms": {**shape["studies"]["stability"]["arms"], "canonical": 35},
     }
     with pytest.raises(ValueError, match="counts"):
         builder.validate_snapshot(data)
@@ -105,9 +107,31 @@ def test_disagreeing_arm_totals_are_rejected() -> None:
 def test_false_return_backtest_claim_is_rejected() -> None:
     builder = load_builder()
     data = snapshot()
+    shape = json.loads((ROOT / "site/research-contract.json").read_text())
     data["studies"]["models"] = {
+        **shape["studies"]["models"],
         "source_ids": ["report"],
         "return_backtest_executed": True,
     }
     with pytest.raises(ValueError, match="not run"):
+        builder.validate_snapshot(data)
+
+
+@pytest.mark.parametrize("target", ["study", "rehearsal"])
+def test_nested_raw_material_cannot_be_published(target: str) -> None:
+    builder = load_builder()
+    data = snapshot()
+    shape = json.loads((ROOT / "site/research-contract.json").read_text())
+    if target == "study":
+        data["studies"]["numeric"] = {
+            **shape["studies"]["numeric"],
+            "source_ids": ["report"],
+            "candidate_pool": [{"symbol": "private"}],
+        }
+    else:
+        data["daily"]["offline_rehearsal"] = {
+            **shape["offline_rehearsal"],
+            "response_bytes": "private response",
+        }
+    with pytest.raises(ValueError, match="public contract"):
         builder.validate_snapshot(data)
