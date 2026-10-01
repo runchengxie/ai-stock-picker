@@ -6,7 +6,7 @@ English · [简体中文](docs/zh-CN/README-project.md)
 
 For example, you already have 30 candidates and want to select 5 with a quality preference. This tool reads your data, asks a model to rank the candidates, checks that the selection stays within your pool and has the right count, then saves a JSON result and a run record.
 
-[Research results](https://runchengxie.github.io/ai-stock-picker/) · [Usage guide](docs/usage.md) · [All documentation](docs/README.md)
+[Research results](https://runchengxie.github.io/ai-stock-picker/) · [Experiment notes](https://runchengxie.github.io/ai-stock-picker/research/stability/) · [Usage guide](docs/usage.md) · [All documentation](docs/README.md)
 
 ## What it does
 
@@ -69,7 +69,7 @@ For US commands, model options, secure credential files, and common errors, see 
 
 ## What did the experiments find?
 
-The [results page](https://runchengxie.github.io/ai-stock-picker/) compares model reliability, historical rule changes, and turnover. The [plain-language notes](docs/research/README.md) explain each result. The reviewed snapshot does not yet include a verified continuous daily series; an offline rehearsal is shown separately.
+The [research site](https://runchengxie.github.io/ai-stock-picker/) shows model tests, historical rule comparisons, and turnover results. It also has [plain-language experiment notes](https://runchengxie.github.io/ai-stock-picker/research/stability/). The reviewed snapshot does not yet include a verified continuous daily series; an offline rehearsal is shown separately. The site is static and does not call a model or need an API key.
 
 ## Where to go next
 

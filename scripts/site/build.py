@@ -1,15 +1,12 @@
 #!/usr/bin/env python3
-"""Stage the public research site from an explicitly pinned, reviewed snapshot."""
+"""Validate the pinned public research snapshot before the static-site build."""
 
 from __future__ import annotations
 
-import argparse
 import hashlib
-import html
 import json
 import math
 import re
-import shutil
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -192,70 +189,3 @@ def read_snapshot(path: Path, expected_sha256: str) -> dict[str, Any]:
     data = json.loads(raw, object_pairs_hook=_object_pairs)
     validate_snapshot(data)
     return data
-
-
-def _fallback(data: dict[str, Any], messages: dict[str, str]) -> str:
-    studies = data["studies"]
-    if not studies:
-        return html.escape(messages["research.loading"])
-    stability, models = studies["stability"], studies["models"]
-    rows = [
-        ("research.stability.title", f"{stability['passed']} / {stability['calls']}"),
-        (
-            "research.models.title",
-            ", ".join(
-                f"{key}: {row['publication_passes']} / {row['calls']}"
-                for key, row in models["models"].items()
-            ),
-        ),
-        ("research.guarded.title", messages["research.guarded.finding"]),
-        ("research.numeric.title", messages["research.numeric.finding"]),
-        ("research.turnover.title", messages["research.turnover.finding"]),
-    ]
-    body = "".join(
-        f"<tr><th>{html.escape(messages[key])}</th><td>{html.escape(value)}</td></tr>"
-        for key, value in rows
-    )
-    daily = (
-        "research.daily.empty" if not data["daily"]["rows"] else "research.daily.title"
-    )
-    return (
-        f"<table><caption>{html.escape(messages['research.title'])}</caption>"
-        f"<tbody>{body}</tbody></table><p>{html.escape(messages[daily])}</p>"
-    )
-
-
-def stage_site(site: Path, data: dict[str, Any], output: Path) -> None:
-    output = output.expanduser().resolve()
-    if output == ROOT or ROOT in output.parents:
-        raise ValueError("generated site must stay outside the checkout")
-    if output.exists():
-        raise FileExistsError("site output already exists")
-    if any(path.is_symlink() for path in site.rglob("*")):
-        raise ValueError("site source must not contain symlinks")
-    shutil.copytree(site, output)
-    (output / "data").mkdir()
-    (output / "data/research.json").write_text(
-        json.dumps(data, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
-    )
-    messages = json.loads((site / "locales/en.json").read_text())
-    index = output / "index.html"
-    index.write_text(
-        index.read_text().replace(
-            "<!-- RESEARCH_FALLBACK -->", _fallback(data, messages)
-        )
-    )
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--snapshot", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
-    pin = json.loads((ROOT / "site/research-source.json").read_text())
-    data = read_snapshot(args.snapshot, pin["sha256"])
-    stage_site(ROOT / "site", data, args.output)
-
-
-if __name__ == "__main__":
-    main()

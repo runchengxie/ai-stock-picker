@@ -1,75 +1,60 @@
-# Research website: preview and update
+# Research website: preview and maintain
 
 English · [简体中文](zh-CN/showcase.md)
 
-The [website](https://runchengxie.github.io/ai-stock-picker/) leads with research findings. The tool introduction and installation walkthrough are on `tool.html`. Neither page calls a model or needs an API key.
+The [research site](https://runchengxie.github.io/ai-stock-picker/) is the main way to read this project's results. The homepage shows reviewed comparisons; each study has a plain-language note in English and Chinese. The [tool page](https://runchengxie.github.io/ai-stock-picker/tool.html) explains how to install and try the CLI. Both are static pages: they do not call an AI model or need an API key.
 
-## What the website shows
+## What readers can see
 
-Five archived studies cover input-order stability, Flash/Pro comparison, a six-month rule replay, revised numeric rules, and lower-turnover portfolios. Daily observations are a separate section. The reviewed October 1, 2026 snapshot has no verified continuous daily series; the July 18 offline rehearsal is clearly separated.
+The site covers five archived studies: model stability, Flash versus Pro, two rule replays, and a turnover experiment. It keeps failed checks and missing results visible. The current snapshot has no verified continuous daily series; a July 18 offline rehearsal is labeled separately. Results are historical research, not investment advice or evidence that the tool is ready for live trading.
 
-Holding-period controls compare matched historical results. Model tests keep ranking validity separate from complete-result usability. Missing returns are not zeros, failed runs stay visible, and no daily-return curve is fabricated. Plain-language explanations are in [Research notes](research/README.md).
+The pages and note routes are built with Astro 7. English is the default; readers can switch languages and dark mode. The site remembers both choices when browser storage is available. The source notes in `docs/research/` and `docs/zh-CN/research/` are the only copies of the note text; Astro reads them directly and checks that every English note has one Chinese translation.
 
-## Where the numbers live
+## Preview the site
 
-Generated snapshots and preview builds stay outside the source repository. `site/research-source.json` records a release tag and SHA-256 for the reviewed `research.json` asset. Actions downloads that exact asset, checks its digest and evidence classification, then stages the site under the runner's temporary directory.
-
-The snapshot is a public aggregate, not a copy of private raw responses. It contains reviewed numbers and source filenames/content hashes. Original reports and receipts stay in the private owner's research archive. A source hash identifies bytes; it is not an independent historical timestamp. Asset pinning makes a silent release-asset change fail the build.
-
-## Preview locally
-
-Download the pinned asset into your data directory, then build into a new path outside the checkout:
+Install Node.js 24 and the repository's locked npm dependencies. Download the exact snapshot release pinned in `site/research-source.json`, validate and stage it outside the checkout, then build to a new output directory outside the checkout:
 
 ```bash
-mkdir -p "$HOME/data/ai-stock-picker/research-site/download"
+npm ci
 gh release download research-data-2026-10-01 \
   --repo runchengxie/ai-stock-picker \
   --pattern research.json \
   --dir "$HOME/data/ai-stock-picker/research-site/download"
-python scripts/site/build.py \
+uv run python scripts/site/stage_snapshot.py \
   --snapshot "$HOME/data/ai-stock-picker/research-site/download/research.json" \
-  --output "$HOME/data/ai-stock-picker/research-site/preview"
+  --output "$HOME/data/ai-stock-picker/research-site/research.json"
+export AIPICK_RESEARCH_SNAPSHOT="$HOME/data/ai-stock-picker/research-site/research.json"
+npm run check
+npm run build -- --outDir "$HOME/data/ai-stock-picker/research-site/preview-20261002/ai-stock-picker"
+mkdir -p "$HOME/data/ai-stock-picker/research-site/preview-20261002/ai-stock-picker/data"
+cp "$AIPICK_RESEARCH_SNAPSHOT" \
+  "$HOME/data/ai-stock-picker/research-site/preview-20261002/ai-stock-picker/data/research.json"
+AIPICK_SITE_OUTPUT="$HOME/data/ai-stock-picker/research-site/preview-20261002/ai-stock-picker" \
+  node --test tests/site/*.test.mjs
 python -m http.server 8000 \
-  --directory "$HOME/data/ai-stock-picker/research-site/preview" \
+  --directory "$HOME/data/ai-stock-picker/research-site/preview-20261002" \
   --bind 127.0.0.1
 ```
 
-Open `http://localhost:8000`. Choose an unused output directory for another build. Existing output is never overwritten. If the release pin changes, use its tag instead of the example tag above.
+Open `http://localhost:8000/ai-stock-picker/`. Pick a new preview directory for each build; do not build generated files into the repository. If the release pin changes, use the new tag from `site/research-source.json` instead of the example above.
 
-## Update daily observations
+## How publishing works
 
-A daily row must come from a real owner day bundle validated by `validate_shadow_day`, not from a caller's self-reported `valid=true`. The importer rejects offline/unbound rehearsals and exports only an allowlisted public summary:
+The Pages workflow runs on pull requests to check the content, frontend, snapshot, and generated routes. It downloads the pinned release asset, checks its SHA-256 and public-data contract with `scripts/site/stage_snapshot.py`, and builds the static site in the runner's temporary directory. Only a successful build on `main` is deployed.
 
-```bash
-uv run python scripts/site/export_daily.py \
-  --snapshot /absolute/path/research.json \
-  --day-dir /absolute/path/campaign/arm/provider--model/YYYY-MM-DD \
-  --output "$HOME/data/ai-stock-picker/research-site/next-research.json"
-```
+The public JSON contains reviewed aggregate results and source fingerprints. It does not contain private candidate pools, prompts, raw model responses, or credentials. A source hash identifies the file contents; it does not prove when the source was created. Changing the release tag or digest requires a reviewed PR. Publish new data as a new release asset; do not replace the old one.
 
-Repeat `--day-dir` for additional bundles. Validation includes repetitions, consensus, and frozen launch lineage. Failed terminal states are retained. It does not compute profits or upgrade timing/out-of-sample status.
+To add daily observations, start with a real owner day bundle and use `scripts/site/export_daily.py`. The exporter validates repetitions, consensus, and frozen launch lineage, and only exports fields allowed by the public contract. It does not calculate returns or upgrade the evidence classification. Review the combined snapshot and update the release pin through a PR.
 
-Review the combined snapshot, reconcile counts and definitions, record a new review date, and publish it as a **new** research-data release asset. Update the release tag and SHA-256 in `site/research-source.json` in a PR. Do not replace the old release asset. Historical study fields are tied to those specific experiments; adding a new experiment requires updating the contract, charts, and notes, not overwriting old findings.
+## Checks
 
-A GitHub runner cannot read the private host's filesystem. Preparing and reviewing a new snapshot happens separately from deployment; the site is not claiming automatic daily data collection.
-
-## Languages and interaction
-
-English is primary. `site/locales/en.json` and `zh-CN.json` hold copy under stable semantic keys. The selected language is remembered when browser storage permits. Documentation links follow it, dates and numbers use the selected locale with an explicit UTC date display, and missing messages fall back to English.
-
-`site/app.js` renders the research views; `research-model.mjs` owns small tested metric/view helpers. `tool.js` maintains the installation subpage. Both use relative asset paths for GitHub project Pages. The generated HTML includes a readable English summary if JavaScript or data loading fails.
-
-Keep English HTML fallback text aligned with the catalogs. Update English and Chinese research notes together. Do not translate CLI options, field names, or persisted identifiers.
-
-## Validation and deployment
-
-Run the existing Python quality gate, including publishing tests:
+Run the Python project checks and frontend/content tests before opening a PR:
 
 ```bash
 uv run python scripts/dev/check.py
-node --test tests/site/*.test.mjs
+npm ci
+npm run check
+node --test tests/site/research-model.test.mjs tests/site/research-notes.test.mjs
 ```
 
-Inspect desktop/mobile views, language switching, source details, study and holding-period controls, missing-data states, and the tool subpage. Verify displayed calculations against the snapshot.
-
-Pages Actions runs frontend checks and the real pinned-data build on PRs. It publishes only the staged public site from `main`. Publishing permissions remain scoped to the deploy job, and Python quality checks still use the single existing CI entry point. The design follows [GitHub's Pages workflow documentation](https://docs.github.com/en/pages/getting-started-with-github-pages/using-custom-workflows-with-github-pages).
+The generated-site test needs a completed Astro build and `AIPICK_SITE_OUTPUT` pointing to it, as shown above. Pages Actions does this automatically. Confirm the rendered results against the snapshot when changing metrics, and keep the English note and its Chinese reference in sync.

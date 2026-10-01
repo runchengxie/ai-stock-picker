@@ -70,23 +70,6 @@ def test_daily_status_is_not_inferred_from_a_valid_stock_list() -> None:
         builder.validate_snapshot(data)
 
 
-def test_build_never_overwrites_a_site(tmp_path: Path) -> None:
-    builder = load_builder()
-    output = tmp_path / "published"
-    output.mkdir()
-    marker = output / "keep.txt"
-    marker.write_text("existing site")
-    with pytest.raises(FileExistsError):
-        builder.stage_site(ROOT / "site", snapshot(), output)
-    assert marker.read_text() == "existing site"
-
-
-def test_build_output_must_stay_outside_checkout() -> None:
-    builder = load_builder()
-    with pytest.raises(ValueError, match="outside"):
-        builder.stage_site(ROOT / "site", snapshot(), ROOT / "generated-site")
-
-
 def test_disagreeing_arm_totals_are_rejected() -> None:
     builder = load_builder()
     data = snapshot()

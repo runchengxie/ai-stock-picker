@@ -6,7 +6,7 @@
 
 例如：你已有 30 只候选股，希望按质量偏好选出 5 只。这个工具读取候选数据、调用模型重新排序，再检查模型是否只选了池内股票、数量是否正确，最后保存 JSON 结果和运行记录。
 
-[研究结果页](https://runchengxie.github.io/ai-stock-picker/) · [使用指南](usage.md) · [全部文档](README.md)
+[研究结果页](https://runchengxie.github.io/ai-stock-picker/) · [实验笔记](https://runchengxie.github.io/ai-stock-picker/zh-CN/research/stability/) · [使用指南](usage.md) · [全部文档](README.md)
 
 ## 它能做什么
 
@@ -69,7 +69,7 @@ uv run aipick cn pick \
 
 ## 实验发现了什么
 
-[结果页](https://runchengxie.github.io/ai-stock-picker/)对比模型可靠性、历史规则调整和换手。[大白话笔记](research/README.md)逐项解释结果。当前汇总还没有核验后的连续每日序列；离线演练分开展示。
+[研究站](https://runchengxie.github.io/ai-stock-picker/)对比模型测试、历史规则和换手结果，并提供[大白话实验笔记](https://runchengxie.github.io/ai-stock-picker/zh-CN/research/stability/)。当前汇总还没有核验后的连续每日序列；离线演练分开展示。网站是静态页面，不会调用模型，也不需要 API 密钥。
 
 ## 接下来读什么
 

@@ -6,6 +6,7 @@ on:
     paths:
       [
         "site/**",
+        "public/**",
         "src/**",
         "docs/research/**",
         "docs/zh-CN/research/**",
@@ -21,6 +22,7 @@ on:
     paths:
       [
         "site/**",
+        "public/**",
         "src/**",
         "docs/research/**",
         "docs/zh-CN/research/**",
@@ -55,14 +57,14 @@ jobs:
           cache: npm
       - name: Install locked website dependencies
         run: npm ci
-      - name: Check static assets and metric behavior
+      - name: Check site source and behavior
         run: |
-          node --check site/app.js
-          node --check site/tool.js
-          node --check site/theme.js
-          node --test tests/site/*.test.mjs
-          python -m json.tool site/locales/en.json > /dev/null
-          python -m json.tool site/locales/zh-CN.json > /dev/null
+          node --check public/app.js
+          node --check public/tool.js
+          node --check public/theme.js
+          node --test tests/site/research-model.test.mjs tests/site/research-notes.test.mjs
+          python -m json.tool public/locales/en.json > /dev/null
+          python -m json.tool public/locales/zh-CN.json > /dev/null
           npm run check
       - name: Download the pinned reviewed snapshot
         env:
@@ -85,6 +87,10 @@ jobs:
           mkdir -p "$RUNNER_TEMP/aipick-pages-site/data"
           cp "$RUNNER_TEMP/aipick-research-data/research.json" \
             "$RUNNER_TEMP/aipick-pages-site/data/research.json"
+      - name: Verify generated routes and fallback content
+        env:
+          AIPICK_SITE_OUTPUT: ${{ runner.temp }}/aipick-pages-site
+        run: node --test tests/site/*.test.mjs
       - name: Configure Pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v5
