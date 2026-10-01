@@ -6,7 +6,7 @@
 
 **Architecture:** Astro prerenders the homepage, `/tool.html`, and note pages from Markdown content collections. The existing Python snapshot validator remains the gate for the pinned public research JSON; Actions stages its validated output in the runner temp directory and passes it to Astro for rendering and publication. Small browser scripts retain charts, filters, language choice, and theme choice.
 
-**Tech Stack:** Astro 6, Node.js 24, npm with committed `package-lock.json`, TypeScript/Zod content schemas, existing Python standard-library snapshot validator, GitHub Pages Actions.
+**Tech Stack:** Astro 7.3.5, Node.js 24, npm with committed `package-lock.json`, TypeScript/Zod content schemas, existing Python standard-library snapshot validator, GitHub Pages Actions.
 
 **Spec:** `docs/superpowers/specs/2026-10-01-astro-research-site-design.md`
 
@@ -20,7 +20,7 @@
 - Do not publish private candidate pools, prompts, raw model responses, credentials, or machine paths.
 - Preserve all five study results, source fingerprints, daily-observation limits, and the explicit research-only classification.
 - Do not change the Python selection behavior or evidence contracts.
-- Node.js 24 is the build/runtime floor for the website; Astro 6 requires Node.js 22.12 or newer.
+- Node.js 24 is the build/runtime floor for the website; Astro 7 requires Node.js 22.12 or newer.
 
 ## Review Focus
 
@@ -58,9 +58,9 @@
 - `npm run build -- --outDir <runner-temp-output>` creates static output; build-time research rendering reads the staged path from `AIPICK_RESEARCH_SNAPSHOT`.
 
 - [ ] **Step 1: Add `test_stage_snapshot.py` cases** for valid pinned output, digest mismatch, nested private-field injection, output inside the checkout, and existing output preservation.
-- [ ] **Step 2: Run** `uv run pytest tests/site/test_stage_snapshot.py -q`; confirm the new interface is missing or the assertions fail.
-- [ ] **Step 3: Implement** the staging interface by reusing `read_snapshot`; do not duplicate or weaken the current validator. Add Astro 6 and Node 24 scripts (`dev`, `check`, `build`, `preview`) and commit the npm lockfile.
-- [ ] **Step 4: Run** `uv run pytest tests/site/test_stage_snapshot.py tests/site/test_build.py -q` and `npm run check`; confirm the staging tests and Astro project check pass.
+- [ ] **Step 2: Run** `uv run pytest tests/site/test_stage_snapshot.py --no-cov -q`; confirm the new interface is missing or the assertions fail.
+- [ ] **Step 3: Implement** the staging interface by reusing `read_snapshot`; do not duplicate or weaken the current validator. Add Astro 7 and Node 24 scripts (`dev`, `check`, `build`, `preview`) and commit the npm lockfile.
+- [ ] **Step 4: Run** `uv run pytest tests/site/test_stage_snapshot.py tests/site/test_build.py --no-cov -q`, `npm ci --no-audit`, `npm run check`, and `npm audit`; confirm the staging tests and Astro project check pass, the committed lockfile installs cleanly, and the dependency audit reports zero vulnerabilities.
 - [ ] **Step 5: Update the Pages workflow** to use `actions/setup-node@v4` with Node 24 and `npm ci`, validate the downloaded release into `$RUNNER_TEMP`, and send Astro output to `$RUNNER_TEMP`.
 - [ ] **Step 6: Commit** the build foundation and snapshot-staging changes.
 
