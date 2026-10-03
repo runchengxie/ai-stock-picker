@@ -96,7 +96,7 @@ jobs:
         uses: actions/configure-pages@v5
       - name: Upload only the staged public site
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        uses: actions/upload-pages-artifact@v4
+        uses: actions/upload-pages-artifact@v5
         with:
           path: ${{ runner.temp }}/aipick-pages-site
   deploy:
