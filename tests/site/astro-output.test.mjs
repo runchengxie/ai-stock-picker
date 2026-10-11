@@ -36,3 +36,30 @@ test('Chinese research notes have base-prefixed theme assets and the correct loc
   assert.match(html, /\/ai-stock-picker\/theme\.js/);
   assert.match(html, /data-paired-locale="en"/);
 });
+
+test('links in every rendered research note resolve to published pages or source documents', async () => {
+  for (const route of required.filter((name) => name.includes('research/'))) {
+    const html = await readFile(file(route), 'utf8');
+    const page = new URL(route.replace(/index\.html$/, ''), 'https://runchengxie.github.io/ai-stock-picker/');
+    for (const [, href] of html.matchAll(/<a\b[^>]*\bhref="([^"]+)"/g)) {
+      const target = new URL(href, page);
+      if (target.origin !== page.origin) continue;
+      assert.ok(target.pathname.startsWith('/ai-stock-picker/'), `${route}: ${href}`);
+      assert.ok(!target.pathname.endsWith('.md'), `${route}: unpublished Markdown link ${href}`);
+      const relative = target.pathname.slice('/ai-stock-picker/'.length);
+      await readFile(file(!relative || relative.endsWith('/') ? `${relative}index.html` : relative));
+    }
+  }
+});
+
+test('previously published broken language links redirect to the matching note', async () => {
+  for (const slug of ['stability', 'models', 'guarded', 'numeric', 'turnover', 'daily']) {
+    for (const [oldRoute, target] of [
+      [`research/zh-CN/research/${slug}.md`, `zh-CN/research/${slug}/`],
+      [`zh-CN/research/${slug}.md`, `research/${slug}/`],
+    ]) {
+      const html = await readFile(file(`${oldRoute}/index.html`), 'utf8');
+      assert.ok(html.includes(`url=/ai-stock-picker/${target}`), oldRoute);
+    }
+  }
+});

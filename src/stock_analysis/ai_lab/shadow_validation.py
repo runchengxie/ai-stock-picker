@@ -286,7 +286,7 @@ def _numeric_fallback_symbols(consensus: Mapping[str, object]) -> list[str]:
         or any(not isinstance(item, str) for item in [*locked, *boundary])
     ):
         raise ValueError("shadow ranking_policy partitions are invalid")
-    return cast(list[str], [*locked, *boundary[:3]])
+    return [*locked, *boundary[:3]]
 
 
 def validate_shadow_campaign(campaign_root: str | Path) -> dict[str, object]:
