@@ -10,6 +10,8 @@ The site covers five archived studies: model stability, Flash versus Pro, two ru
 
 The pages and note routes are built with Astro 7. English is the default; readers can switch languages and dark mode. The site remembers both choices when browser storage is available. The source notes in `docs/research/` and `docs/zh-CN/research/` are the only copies of the note text; Astro reads them directly and checks that every English note has one Chinese translation.
 
+During the build, relative Markdown links to research notes become published HTML routes. Links to other documentation open their source on GitHub. Previously published broken language links redirect to the matching note.
+
 ## Preview the site
 
 Install Node.js 24 and the repository's locked npm dependencies. Download the exact snapshot release pinned in `site/research-source.json`, validate and stage it outside the checkout, then build to a new output directory outside the checkout:
