@@ -26,4 +26,5 @@ export function setupNoteLanguage() {
     rememberLanguage(picker.value);
     window.location.assign(target);
   });
+  picker.disabled = false;
 }

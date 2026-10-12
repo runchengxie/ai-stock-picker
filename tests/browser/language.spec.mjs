@@ -69,3 +69,21 @@ test('missing Chinese catalog falls back to an operable English page', async ({ 
   await expect(page.locator('#language')).toHaveValue('en');
   await expect(page.locator('html')).toHaveAttribute('lang', 'en');
 });
+
+test('a note enables its selector only after the navigation handler is ready', async ({ page }) => {
+  let release;
+  const scriptsReady = new Promise((resolve) => { release = resolve; });
+  await page.route('**/_astro/*.js', async (route) => {
+    await scriptsReady;
+    await route.continue();
+  });
+  try {
+    await page.goto('zh-CN/research/daily/', { waitUntil: 'commit' });
+    await expect(page.locator('#language')).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(page.locator('#language')).toBeEnabled();
+  await page.locator('#language').selectOption('en');
+  await expect(page).toHaveURL(/\/ai-stock-picker\/research\/daily\/$/);
+});

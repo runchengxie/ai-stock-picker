@@ -29,7 +29,7 @@ const siteBase = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
       <nav aria-label={text('research.nav.main')}><a href={`${siteBase}#notes`}>{text('research.note.all')}</a><a href={`${siteBase}tool.html`}>{text('research.note.tool')}</a></nav>
       <label class="language">
         <span class="sr-only">{text('nav.language')}</span>
-        <select id="language" aria-label={text('nav.language')} data-locale-en={`${siteBase}research/${note.data.slug}/`} data-locale-zh={`${siteBase}zh-CN/research/${note.data.slug}/`}>
+        <select id="language" disabled aria-label={text('nav.language')} data-locale-en={`${siteBase}research/${note.data.slug}/`} data-locale-zh={`${siteBase}zh-CN/research/${note.data.slug}/`}>
           <option value="en" selected={locale === 'en'}>English</option>
           <option value="zh-CN" selected={locale === 'zh-CN'}>中文</option>
         </select>
