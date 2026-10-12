@@ -6,6 +6,12 @@ Complete the installation and no-key sample in the [README](../README.md) first.
 
 A real run needs a candidate file, the market's API key, and an unused output path. It contacts a model service and may incur API charges.
 
+## Command families
+
+Both `aipick cn` and `aipick us` expose `contract-info`, `pick`, `pick-plan`, `validate`, `validate-evidence`, `stability-plan`, and `trial`. Inspect the market-specific options with `aipick cn --help` or `aipick us --help`.
+
+A-share research also exposes `shadow-decision-plan`, `shadow-launch-receipt`, `shadow-day`, `shadow-watchdog`, `validate-shadow-day`, and `validate-shadow-campaign`. These commands isolate DeepSeek or OpenAI research calls from official selection publication. See [Shadow research](shadow-research.md) for the frozen `.8` decision and launch contracts.
+
 ## Choose your options
 
 | Option | Purpose | Example |

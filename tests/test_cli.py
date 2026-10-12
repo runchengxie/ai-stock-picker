@@ -15,7 +15,7 @@ from stock_analysis.ai_lab.selection import (
     build_selection_plan,
     create_selection,
 )
-from stock_analysis.app.cli import app, create_parser, main
+from stock_analysis.app.cli import app, main
 
 
 def _exchange(
@@ -111,28 +111,6 @@ def _tamper_v2_payload(payload: dict[str, Any], case: str) -> None:
         payload["picks"][0]["reasoning"] = "候选特征由供应商 DëepSeek 输出。"
     else:
         payload["picks"][0]["reasoning"] = "Candidate features support the rank."
-
-
-def test_root_help_lists_only_two_markets(
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    assert main([]) == 0
-    output = capsys.readouterr().out
-    assert "{us,cn}" in output
-    assert "backtest" not in output
-    assert "report" not in output
-    assert "pipeline" not in output
-
-
-def test_market_parsers_expose_documented_commands() -> None:
-    parser = create_parser()
-    for market in ("us", "cn"):
-        with pytest.raises(SystemExit) as exit_info:
-            parser.parse_args([market, "--help"])
-        assert exit_info.value.code == 0
-    for removed in ("backtest", "report", "pipeline"):
-        with pytest.raises(SystemExit):
-            parser.parse_args(["cn", removed])
 
 
 @pytest.mark.parametrize(

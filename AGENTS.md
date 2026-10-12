@@ -8,17 +8,7 @@ No separate human review is required for a PR authored by the user or for work t
 
 本仓库提供严格、可审计的候选股重排工具。
 
-当前公开命令包括：
-
-```text
-aipick cn pick
-aipick us pick
-aipick cn pick-plan
-aipick cn validate
-aipick cn validate-evidence
-aipick cn stability-plan
-aipick cn trial
-```
+当前命令分类和市场边界见英文权威[使用指南](docs/usage.md#command-families)及[中文译文](docs/zh-CN/usage.md#命令分类)。正式选股与研究 shadow 命令必须保持发布隔离。
 
 候选池由外部系统生成。本仓库负责校验输入、构建 prompt、调用对应模型、校验模型输出并发布结果文件。
 
@@ -28,7 +18,7 @@ aipick cn trial
 
 1. 模型只能选择候选池中的股票。
 2. 股票名称和主题只能从候选池回填。
-3. A 股正式选择只能使用 `DEEPSEEK_API_KEY`；冻结的 bounded v2 研究 shadow 可以隔离使用
+3. A 股正式选择只能使用 `DEEPSEEK_API_KEY`；冻结的研究 shadow 可以隔离使用
    `OPENAI_API_KEY`，但不能生成正式发布选择。
 4. 美股只能使用 `GEMINI_API_KEY`。
 5. provider 凭据不能进入 URL。
@@ -113,7 +103,7 @@ docs/
 - `frozen_plan.py` 写入并重建无网络 production 选择计划
 - `inference_config.py` 归一化并校验模型推理参数
 - `prompting.py` 隔离 production v4 与 legacy v3 的 Prompt 渲染
-- `providers.py` 调用 DeepSeek 与 Gemini，并保留可审计的响应信息
+- `providers.py` 调用正式选择使用的 DeepSeek 与 Gemini，并提供研究 shadow 的 OpenAI Responses 调用，保留可审计的响应信息
 - `request_validation.py` 复验归档请求的完整消息和 provider 参数
 - `shadow_campaign.py` 执行 append-only rep3/min2 shadow 与确定性共识
 - `shadow_exchange_validation.py` 复验 shadow 请求和原始响应的语义一致性
@@ -200,6 +190,6 @@ README 只保留新人上手所需内容。字段级契约、架构设计和开�
 
 优先使用清晰、直接的实现。
 
-当前只支持两个固定 provider，无需提前引入插件框架或复杂依赖注入容器。
+正式选择固定使用 DeepSeek 与 Gemini，研究 shadow 还可使用 OpenAI Responses。无需提前引入插件框架或复杂依赖注入容器。
 
 模块拆分应基于职责，避免为了减少行数创建大量缺少独立意义的小文件。
