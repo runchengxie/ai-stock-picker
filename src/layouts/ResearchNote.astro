@@ -1,0 +1,49 @@
+---
+import { render, type CollectionEntry } from 'astro:content';
+import english from '../../public/locales/en.json';
+import chinese from '../../public/locales/zh-CN.json';
+
+interface Props { note: CollectionEntry<'research'> }
+const { note } = Astro.props;
+const locale = note.data.language;
+const catalog = locale === 'zh-CN' ? chinese : english;
+const text = (key: keyof typeof english) => catalog[key] ?? english[key];
+const { Content } = await render(note);
+const siteBase = `${import.meta.env.BASE_URL.replace(/\/$/, '')}/`;
+---
+<!doctype html>
+<html lang={locale}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={note.data.summary} />
+    <title>{note.data.title} · AI Stock Picker {text('research.note.eyebrow')}</title>
+    <link rel="icon" href={`${siteBase}icon.svg`} type="image/svg+xml" />
+    <link rel="stylesheet" href={`${siteBase}styles.css`} />
+    <link rel="stylesheet" href={`${siteBase}research.css`} />
+    <script is:inline src={`${siteBase}theme.js`}></script>
+  </head>
+  <body>
+    <header class="header wrap">
+      <a class="brand" href={siteBase}>AI Stock Picker<span class="brand-tag">{text('research.brandTag')}</span></a>
+      <nav aria-label={text('research.nav.main')}><a href={`${siteBase}#notes`}>{text('research.note.all')}</a><a href={`${siteBase}tool.html`}>{text('research.note.tool')}</a></nav>
+      <label class="language">
+        <span class="sr-only">{text('nav.language')}</span>
+        <select id="language" aria-label={text('nav.language')} data-locale-en={`${siteBase}research/${note.data.slug}/`} data-locale-zh={`${siteBase}zh-CN/research/${note.data.slug}/`}>
+          <option value="en" selected={locale === 'en'}>English</option>
+          <option value="zh-CN" selected={locale === 'zh-CN'}>中文</option>
+        </select>
+      </label>
+      <button class="theme-toggle" id="theme-toggle" type="button" aria-pressed="false" aria-labelledby="theme-toggle-label"><span class="theme-icon" aria-hidden="true">☾</span><span class="sr-only" id="theme-toggle-label">{text('theme.switchToDark')}</span></button>
+    </header>
+    <main id="main" class="wrap research-main note-page">
+      <article><p class="eyebrow">{text('research.note.eyebrow')} · {note.data.date.toISOString().slice(0, 10)}</p><Content /></article>
+      {locale === 'zh-CN' && <p class="translation-note">{text('research.note.reference')}</p>}
+    </main>
+    <footer class="wrap footer"><p>{text('research.note.footer')}</p></footer>
+    <script>
+      import { setupNoteLanguage } from '../../public/language.js';
+      setupNoteLanguage();
+    </script>
+  </body>
+</html>

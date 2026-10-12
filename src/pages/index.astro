@@ -12,7 +12,11 @@ const html = templateSource
   .replace('<meta charset="utf-8" />', `<meta charset="utf-8" />\n    <base href="${BASE_URL}" />`)
   .replace('<!-- RESEARCH_FALLBACK -->', renderResearchFallback(snapshot))
   .replace(/<div class="notes-links">[\s\S]*?<\/div>/, noteLinks)
+  .replace('<script type="module" src="./app.js"></script>', '')
   .replaceAll('href="./', `href="${BASE_URL}`)
   .replaceAll('src="./', `src="${BASE_URL}`);
 ---
 <Fragment set:html={html} />
+<script>
+  import '../scripts/app.js';
+</script>

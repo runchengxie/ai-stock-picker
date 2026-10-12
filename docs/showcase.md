@@ -10,7 +10,9 @@ The site covers five archived studies: model stability, Flash versus Pro, two ru
 
 The pages and note routes are built with Astro 7. English is the default; readers can switch languages and dark mode. The site remembers both choices when browser storage is available. The source notes in `docs/research/` and `docs/zh-CN/research/` are the only copies of the note text; Astro reads them directly and checks that every English note has one Chinese translation.
 
-During the build, relative Markdown links to research notes become published HTML routes. Links to other documentation open their source on GitHub. Previously published broken language links redirect to the matching note.
+Use the language selector at the top of every page. On the homepage and tool page it translates the current page; on a research note it opens the same note in the other language. The selector reflects the current note's language, and the choice carries across pages when browser storage is available. Duplicate language links are omitted from the rendered notes; repository Markdown keeps its source navigation.
+
+Astro bundles the homepage script and its research-model dependency into the published assets. During the build, relative Markdown links to research notes become published HTML routes. Links to other documentation open their source on GitHub. Previously published broken language links redirect to the matching note.
 
 ## Preview the site
 
@@ -59,4 +61,4 @@ npm run check
 node --test tests/site/research-model.test.mjs tests/site/research-notes.test.mjs
 ```
 
-The generated-site test needs a completed Astro build and `AIPICK_SITE_OUTPUT` pointing to it, as shown above. Pages Actions does this automatically. Confirm the rendered results against the snapshot when changing metrics, and keep the English note and its Chinese reference in sync.
+The generated-site test needs a completed Astro build and `AIPICK_SITE_OUTPUT` pointing to it, as shown above. After installing Chromium with `npx playwright install chromium`, run `npm run test:browser` with that same output path to check real language switching, persistence, and storage/catalog fallbacks. The built output must include `data/research.json`. Browser results go outside the checkout, to `/tmp/aipick-browser-results` by default or `AIPICK_BROWSER_OUTPUT` when set. Pages Actions runs these checks automatically. Confirm the rendered results against the snapshot when changing metrics, and keep the English note and its Chinese reference in sync.
