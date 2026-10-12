@@ -6,6 +6,12 @@
 
 一次正式运行需要三样东西：候选股文件、对应市场的 API 密钥，以及一个尚不存在的输出路径。正式运行会访问模型服务，并可能产生 API 费用。
 
+## 命令分类
+
+`aipick cn` 和 `aipick us` 都提供 `contract-info`、`pick`、`pick-plan`、`validate`、`validate-evidence`、`stability-plan` 和 `trial`。通过 `aipick cn --help` 或 `aipick us --help` 查看各市场的参数。
+
+A 股研究还提供 `shadow-decision-plan`、`shadow-launch-receipt`、`shadow-day`、`shadow-watchdog`、`validate-shadow-day` 和 `validate-shadow-campaign`。这些命令将 DeepSeek 或 OpenAI 研究调用与正式选股发布隔离。冻结的 `.8` 决策与调用授权契约见[影子研究](shadow-research.md)。
+
 ## 命令参数怎么选
 
 | 参数 | 用途 | 示例 |
