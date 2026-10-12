@@ -12,6 +12,8 @@ on:
         "docs/zh-CN/research/**",
         "scripts/site/**",
         "tests/site/**",
+        "tests/browser/**",
+        "playwright.config.mjs",
         "package.json",
         "package-lock.json",
         "astro.config.mjs",
@@ -28,6 +30,8 @@ on:
         "docs/zh-CN/research/**",
         "scripts/site/**",
         "tests/site/**",
+        "tests/browser/**",
+        "playwright.config.mjs",
         "package.json",
         "package-lock.json",
         "astro.config.mjs",
@@ -46,7 +50,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -59,7 +63,8 @@ jobs:
         run: npm ci
       - name: Check site source and behavior
         run: |
-          node --check public/app.js
+          node --check src/scripts/app.js
+          node --check public/language.js
           node --check public/tool.js
           node --check public/theme.js
           node --test tests/site/research-model.test.mjs tests/site/research-notes.test.mjs
@@ -91,6 +96,13 @@ jobs:
         env:
           AIPICK_SITE_OUTPUT: ${{ runner.temp }}/aipick-pages-site
         run: node --test tests/site/*.test.mjs
+      - name: Install Chromium for browser regression tests
+        run: npx playwright install --with-deps chromium
+      - name: Verify language switching in the built website
+        env:
+          AIPICK_SITE_OUTPUT: ${{ runner.temp }}/aipick-pages-site
+          AIPICK_BROWSER_OUTPUT: ${{ runner.temp }}/aipick-browser-results
+        run: npm run test:browser
       - name: Configure Pages
         if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
         uses: actions/configure-pages@v6

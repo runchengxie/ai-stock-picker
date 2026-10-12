@@ -34,7 +34,7 @@ test('Chinese research notes have base-prefixed theme assets and the correct loc
   const html = await readFile(file('zh-CN/research/stability/index.html'), 'utf8');
   assert.match(html, /lang="zh-CN"/);
   assert.match(html, /\/ai-stock-picker\/theme\.js/);
-  assert.match(html, /data-paired-locale="en"/);
+  assert.match(html, /data-locale-en="\/ai-stock-picker\/research\/stability\/"/);
 });
 
 test('links in every rendered research note resolve to published pages or source documents', async () => {

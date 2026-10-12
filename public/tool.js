@@ -1,3 +1,5 @@
+import { savedLanguage, rememberLanguage } from './language.js';
+
 (() => {
   const picker = document.getElementById("language");
   const catalogs = {};
@@ -44,19 +46,10 @@
       link.href = `${docRoot}${applied === "zh-CN" ? "zh-CN/" : ""}${link.dataset.doc}`;
     });
     picker.value = applied;
-    try {
-      localStorage.setItem("aipick.locale", applied);
-    } catch {
-      // The page also works when browser storage is disabled.
-    }
+    rememberLanguage(applied);
   }
 
-  let initial = "en";
-  try {
-    if (localStorage.getItem("aipick.locale") === "zh-CN") initial = "zh-CN";
-  } catch {
-    // English remains the default.
-  }
+  const initial = savedLanguage();
   setLanguage(initial)
     .then(() => {
       picker.disabled = false;

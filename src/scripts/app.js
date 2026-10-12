@@ -1,4 +1,5 @@
-import { passRate, returnRows, sortedDays } from "./research-model.mjs";
+import { passRate, returnRows, sortedDays } from "../../site/research-model.mjs";
+import { savedLanguage, rememberLanguage } from "../../public/language.js";
 
 const picker = document.getElementById("language");
 const app = document.getElementById("research-app");
@@ -361,11 +362,7 @@ async function changeLanguage(selected) {
   locale = applied;
   localizePage();
   if (data) render();
-  try {
-    localStorage.setItem("aipick.locale", locale);
-  } catch {
-    /* Storage is optional. */
-  }
+  rememberLanguage(locale);
 }
 
 picker.addEventListener("change", () =>
@@ -386,12 +383,7 @@ document.getElementById("results").addEventListener("change", (event) => {
 });
 
 async function start() {
-  let initial = "en";
-  try {
-    if (localStorage.getItem("aipick.locale") === "zh-CN") initial = "zh-CN";
-  } catch {
-    /* English default. */
-  }
+  const initial = savedLanguage();
   try {
     await changeLanguage(initial);
     picker.disabled = false;
