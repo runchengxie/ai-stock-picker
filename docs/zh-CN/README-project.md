@@ -20,7 +20,7 @@
 
 ## 第一次运行：不需要 API 密钥
 
-需要 **Python 3.10–3.12** 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)。在终端中执行：
+包元数据允许 Python 3.10–3.12；CI 目前只在 Python 3.11 上运行完整检查。需要使用 CI 已验证的配置时，请安装 **Python 3.11** 和 [uv](https://docs.astral.sh/uv/getting-started/installation/)。在终端中执行：
 
 ```bash
 git clone https://github.com/runchengxie/ai-stock-picker.git
