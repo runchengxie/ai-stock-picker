@@ -4,7 +4,7 @@ English · [简体中文](zh-CN/development.md)
 
 ## Environment
 
-Use Python 3.10–3.12 and `uv`. Install locked development dependencies:
+Package metadata allows Python 3.10–3.12. The CI quality job currently runs only on Python 3.11, so other versions are not covered by that job. For the CI-validated setup, use Python 3.11 and `uv`. Install locked development dependencies:
 
 ```bash
 uv sync --locked --group dev

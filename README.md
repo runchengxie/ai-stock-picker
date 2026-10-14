@@ -20,7 +20,7 @@ For example, you already have 30 candidates and want to select 5 with a quality 
 
 ## First run: no API key needed
 
-Install **Python 3.10–3.12** and [uv](https://docs.astral.sh/uv/getting-started/installation/). In your terminal:
+Package metadata allows Python 3.10–3.12; CI currently validates Python 3.11 only. For the CI-validated setup, install **Python 3.11** and [uv](https://docs.astral.sh/uv/getting-started/installation/). In your terminal:
 
 ```bash
 git clone https://github.com/runchengxie/ai-stock-picker.git
