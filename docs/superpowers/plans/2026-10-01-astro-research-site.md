@@ -10,6 +10,8 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-01-astro-research-site-design.md`
 
+**Status (2026-10-16):** Tasks 1–4 were implemented and merged in [PR #124](https://github.com/runchengxie/ai-stock-picker/pull/124) on 2026-10-01 (merge `a7d5026995fb140a2a28b9f8426d3e86bed0688b`). The PR quality, Pages build, and CodeQL checks succeeded. The Pages deploy job was skipped for the pull request; this note records implementation and build evidence, not a separate production deployment receipt.
+
 ## Global Constraints
 
 - Keep `https://runchengxie.github.io/ai-stock-picker/`, `/`, and `/tool.html` working.
@@ -57,12 +59,12 @@
 - Astro uses `site: 'https://runchengxie.github.io'` and `base: '/ai-stock-picker'`.
 - `npm run build -- --outDir <runner-temp-output>` creates static output; build-time research rendering reads the staged path from `AIPICK_RESEARCH_SNAPSHOT`.
 
-- [ ] **Step 1: Add `test_stage_snapshot.py` cases** for valid pinned output, digest mismatch, nested private-field injection, output inside the checkout, and existing output preservation.
-- [ ] **Step 2: Run** `uv run pytest tests/site/test_stage_snapshot.py --no-cov -q`; confirm the new interface is missing or the assertions fail.
-- [ ] **Step 3: Implement** the staging interface by reusing `read_snapshot`; do not duplicate or weaken the current validator. Add Astro 7 and Node 24 scripts (`dev`, `check`, `build`, `preview`) and commit the npm lockfile.
-- [ ] **Step 4: Run** `uv run pytest tests/site/test_stage_snapshot.py tests/site/test_build.py --no-cov -q`, `npm ci --no-audit`, `npm run check`, and `npm audit`; confirm the staging tests and Astro project check pass, the committed lockfile installs cleanly, and the dependency audit reports zero vulnerabilities.
-- [ ] **Step 5: Update the Pages workflow** to use `actions/setup-node@v4` with Node 24 and `npm ci`, validate the downloaded release into `$RUNNER_TEMP`, and send Astro output to `$RUNNER_TEMP`.
-- [ ] **Step 6: Commit** the build foundation and snapshot-staging changes.
+- [x] **Step 1: Add `test_stage_snapshot.py` cases** for valid pinned output, digest mismatch, nested private-field injection, output inside the checkout, and existing output preservation.
+- [x] **Step 2: Run** `uv run pytest tests/site/test_stage_snapshot.py --no-cov -q`; confirm the new interface is missing or the assertions fail.
+- [x] **Step 3: Implement** the staging interface by reusing `read_snapshot`; do not duplicate or weaken the current validator. Add Astro 7 and Node 24 scripts (`dev`, `check`, `build`, `preview`) and commit the npm lockfile.
+- [x] **Step 4: Run** `uv run pytest tests/site/test_stage_snapshot.py tests/site/test_build.py --no-cov -q`, `npm ci --no-audit`, `npm run check`, and `npm audit`; confirm the staging tests and Astro project check pass, the committed lockfile installs cleanly, and the dependency audit reports zero vulnerabilities.
+- [x] **Step 5: Update the Pages workflow** to use `actions/setup-node@v4` with Node 24 and `npm ci`, validate the downloaded release into `$RUNNER_TEMP`, and send Astro output to `$RUNNER_TEMP`.
+- [x] **Step 6: Commit** the build foundation and snapshot-staging changes.
 
 ### Task 2: Load and validate bilingual Markdown note pairs
 
@@ -74,11 +76,11 @@
 - Export `listResearchNotes(entries: CollectionEntry<'research'>[]): ResearchNote[]`; it validates unique stable slugs, supported language values `en` and `zh-CN`, required title/date/summary metadata, and exactly one English and one Chinese entry per slug.
 - The Astro `research` collection loads the two existing Markdown trees with Astro's `glob()` loader; those files remain the only copies of the note text.
 
-- [ ] **Step 1: Add unit cases** for a complete pair, missing translation, duplicate locale for a slug, invalid language, and missing metadata.
-- [ ] **Step 2: Run** `node --test tests/site/research-notes.test.mjs`; confirm missing validation fails as expected.
-- [ ] **Step 3: Add frontmatter** to each note with `title`, `summary`, `date`, `language`, and `slug`; define the Astro Zod schema and implement `listResearchNotes`.
-- [ ] **Step 4: Run** `node --test tests/site/research-notes.test.mjs` and `npm run check`; confirm all pairs validate and missing/malformed cases fail.
-- [ ] **Step 5: Commit** the content schema and note metadata.
+- [x] **Step 1: Add unit cases** for a complete pair, missing translation, duplicate locale for a slug, invalid language, and missing metadata.
+- [x] **Step 2: Run** `node --test tests/site/research-notes.test.mjs`; confirm missing validation fails as expected.
+- [x] **Step 3: Add frontmatter** to each note with `title`, `summary`, `date`, `language`, and `slug`; define the Astro Zod schema and implement `listResearchNotes`.
+- [x] **Step 4: Run** `node --test tests/site/research-notes.test.mjs` and `npm run check`; confirm all pairs validate and missing/malformed cases fail.
+- [x] **Step 5: Commit** the content schema and note metadata.
 
 ### Task 3: Render the homepage, tool page, and bilingual note routes
 
@@ -92,13 +94,13 @@
 - `ResearchDashboard` receives the already validated snapshot as a typed `ResearchSnapshot` and renders its complete static summary before client scripts enhance it.
 - Note routes use the paired collection entries from Task 2 and generate all six slugs in both languages.
 
-- [ ] **Step 1: Add build-output assertions** for `/index.html`, `/tool.html`, twelve note pages, base-prefixed CSS/JS links, rendered note links, the fallback summary, and research-only classification.
-- [ ] **Step 2: Run** `npm run build` with a validated staged snapshot; confirm the new routes and assertions fail before implementation.
-- [ ] **Step 3: Implement** the shared Astro layout and page components. Move the existing dashboard and theme behavior into Astro-managed scripts; derive every internal asset and route URL from `import.meta.env.BASE_URL`.
-- [ ] **Step 4: Render** all result counts, charts' accessible text, study limitations, daily empty state, offline rehearsal, and source fingerprints from the validated snapshot; keep existing metric helpers and tests.
-- [ ] **Step 5: Add the paired note pages** and make language switching navigate to the equivalent note. Keep persisted locale/theme keys `aipick.locale` and `aipick.theme`.
-- [ ] **Step 6: Run** `npm run check`, `node --test tests/site/*.test.mjs`, and `npm run build` with the staged snapshot; inspect the built HTML assertions and the route list.
-- [ ] **Step 7: Commit** the Astro pages and client enhancements.
+- [x] **Step 1: Add build-output assertions** for `/index.html`, `/tool.html`, twelve note pages, base-prefixed CSS/JS links, rendered note links, the fallback summary, and research-only classification.
+- [x] **Step 2: Run** `npm run build` with a validated staged snapshot; confirm the new routes and assertions fail before implementation.
+- [x] **Step 3: Implement** the shared Astro layout and page components. Move the existing dashboard and theme behavior into Astro-managed scripts; derive every internal asset and route URL from `import.meta.env.BASE_URL`.
+- [x] **Step 4: Render** all result counts, charts' accessible text, study limitations, daily empty state, offline rehearsal, and source fingerprints from the validated snapshot; keep existing metric helpers and tests.
+- [x] **Step 5: Add the paired note pages** and make language switching navigate to the equivalent note. Keep persisted locale/theme keys `aipick.locale` and `aipick.theme`.
+- [x] **Step 6: Run** `npm run check`, `node --test tests/site/*.test.mjs`, and `npm run build` with the staged snapshot; inspect the built HTML assertions and the route list.
+- [x] **Step 7: Commit** the Astro pages and client enhancements.
 
 ### Task 4: Switch Pages to Astro and update reader/developer links
 
@@ -110,9 +112,9 @@
 - The Pages build receives `AIPICK_RESEARCH_SNAPSHOT` from the staged validated asset; only the build job may stage it.
 - The deploy job remains restricted to successful `main` builds and uploads only the Astro `dist` output.
 
-- [ ] **Step 1: Add workflow checks** that verify the release checksum, run `npm ci`, `npm run check`, Node metric/content tests, and build to `$RUNNER_TEMP` with the staged snapshot.
-- [ ] **Step 2: Run the workflow-equivalent commands locally** and inspect that no generated data or build output appears in the checkout.
-- [ ] **Step 3: Update** README and showcase documentation with Node 24/Astro commands, public note routes, preview instructions, and the existing GitHub Pages URL; keep Python tool installation separate.
-- [ ] **Step 4: Remove the old static-page source** after the Astro output tests prove the two previous routes and all content have replacements; remove obsolete locale entries without dropping tool-page translations.
-- [ ] **Step 5: Run** `uv run python scripts/dev/check.py`, `npm run check`, `node --test tests/site/*.test.mjs`, and the full Astro output build.
-- [ ] **Step 6: Commit** the deployment and documentation cutover.
+- [x] **Step 1: Add workflow checks** that verify the release checksum, run `npm ci`, `npm run check`, Node metric/content tests, and build to `$RUNNER_TEMP` with the staged snapshot.
+- [x] **Step 2: Run the workflow-equivalent commands locally** and inspect that no generated data or build output appears in the checkout.
+- [x] **Step 3: Update** README and showcase documentation with Node 24/Astro commands, public note routes, preview instructions, and the existing GitHub Pages URL; keep Python tool installation separate.
+- [x] **Step 4: Remove the old static-page source** after the Astro output tests prove the two previous routes and all content have replacements; remove obsolete locale entries without dropping tool-page translations.
+- [x] **Step 5: Run** `uv run python scripts/dev/check.py`, `npm run check`, `node --test tests/site/*.test.mjs`, and the full Astro output build.
+- [x] **Step 6: Commit** the deployment and documentation cutover.
