@@ -48,6 +48,8 @@ consensus 都先在隔离 staging 完整落盘，再原子发布为 complete 或
 `ai_shadow_launch_receipt` 再冻结 provider、model 和完整推理参数。二者使用规范化 JSON 内容
 哈希，receipt 绑定 decision digest，runner 只能由 receipt 构造 model partition：
 
+下面的日期是用于展示工件绑定关系的历史周六。运行前瞻实验时，请替换为已批准日程中的未来交易日，并使用同一日期的冻结候选计划。CLI 会校验信号日期与计划一致，并要求在该日收盘后执行，但不会检查交易所日历。外部调度系统负责选择并安排有效交易日。
+
 ```bash
 uv run aipick cn shadow-decision-plan \
   --plan /absolute/path/frozen/plan.json \
