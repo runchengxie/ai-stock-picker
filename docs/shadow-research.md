@@ -40,7 +40,9 @@ The bounded arm completes only when each final boundary stock has at least two v
 
 Two immutable artifacts remove the old `ai_pick_plan` binding to DeepSeek identity. `ai_shadow_decision_plan` freezes campaign/date/arm, Prompt, candidates, and numeric evidence. `ai_shadow_launch_receipt` then freezes provider, model, and inference options. Both use canonical JSON content hashes; the receipt binds the decision digest, and the runner derives its model partition only from the receipt.
 
-Replace the example paths and model snapshot with your frozen materials:
+Replace the example paths, model snapshot, and signal date with your frozen materials:
+
+The date below is a historical Saturday used only to show how the artifacts bind together. For a prospective run, replace it with the future trading date in your approved schedule and use a frozen candidate plan for that same date. The CLI checks that the signal date matches the plan and that execution occurs after the signal-date close; it does not check the exchange calendar. The external control plane must select and schedule a valid trading session.
 
 ```bash
 uv run aipick cn shadow-decision-plan \
